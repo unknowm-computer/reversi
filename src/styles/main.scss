@@ -1,0 +1,34 @@
+@use './tokens' as *;
+:root {
+  font-family: 'Apple SD Gothic Neo', 'Noto Sans KR', system-ui, sans-serif;
+  color: #263e35; background: #f5f2e9; font-synthesis: none; text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --paper: #f5f2e9; --card: #fcfaf5; --ink: #263e35; --muted: #586554;
+  --text-accent: #526c40; --board-text: #e0e8d5;
+  --text-micro: 10px; --text-caption: 12px; --text-small: 14px; --text-label: 15px; --text-body: 16px;
+  --green: #285848; --green-dark: #193e32; --lime: #dbe8ac; --line: #deded0;
+  --orange: #c57542; --danger: #a74738; --radius: 22px;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-6: 24px; --space-8: 32px;
+  --layer-modal: 100; --layer-toast: 110;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; line-height: 1.5; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; background: none; padding: 0; }
+button:disabled { cursor: not-allowed; opacity: .7; }
+a { color: inherit; }
+button, a, input, select { -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 3px solid #c0803c; outline-offset: 4px; }
+input, select { border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 12px 14px; min-height: 46px; }
+h1, h2, h3, p { margin: 0; }
+button, a { touch-action: manipulation; }
+.primary { background: var(--green); color: #fff; border: 1px solid var(--green); border-radius: 14px; padding: 16px 22px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 20px; min-height: 52px; transition: background .2s, transform .2s; }
+.primary:hover:not(:disabled) { background: var(--green-dark); transform: translateY(-1px); }
+.secondary { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 18px; min-height: 44px; font-weight: 600; }
+.text-button { color: var(--muted); display: inline-flex; align-items: center; gap: 8px; padding: 10px; font-size: var(--text-label); }
+.eyebrow { font-family: ui-monospace, monospace; font-size: var(--text-small); font-weight: 600; letter-spacing: .18em; text-transform: uppercase; }
+.muted { color: var(--muted); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
