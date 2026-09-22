@@ -1,12 +1,32 @@
 <script setup lang="ts">
 import type { Character, Reaction } from '../../../shared/game/types';
-interface Props { character: Character; mood?: Reaction; decorative?: boolean; portrait?: boolean }
-withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: false });
+interface Props { character: Character; mood?: Reaction; decorative?: boolean; portrait?: boolean; pose?: 'normal' | 'plead' | 'consider' }
+withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: false, pose: 'normal' });
 </script>
 <template>
-  <svg class="character" :class="[character, `mood-${mood}`, { portrait }]" :viewBox="portrait ? (character === 'jannabi' ? '26 0 168 168' : '33 0 148 148') : '0 0 220 230'" :aria-hidden="decorative" :role="decorative ? undefined : 'img'" :aria-label="decorative ? undefined : character === 'jannabi' ? '장난꾸러기 잔나비' : portrait ? '느긋한 베짱이' : '바이올린을 연주하는 베짱이'">
+  <svg class="character" :class="[character, `mood-${mood}`, `pose-${pose}`, { portrait }]" :viewBox="portrait ? (character === 'jannabi' ? '26 0 168 168' : '33 0 148 148') : '0 0 220 230'" :aria-hidden="decorative" :role="decorative ? undefined : 'img'" :aria-label="decorative ? undefined : character === 'jannabi' ? '장난꾸러기 잔나비' : portrait ? '느긋한 베짱이' : '바이올린을 연주하는 베짱이'">
     <ellipse v-if="!portrait" cx="110" cy="210" rx="65" ry="9" fill="#203d2d" opacity=".1" />
     <g class="body">
+      <g v-if="pose !== 'normal'" class="pose-limbs" stroke-linecap="round" stroke-linejoin="round">
+        <template v-if="pose === 'plead'">
+          <path d="M85 180q-27 6-28 20 2 12 34 9l19-12 19 12q34 3 34-9-2-15-29-20" class="pose-fur" stroke-width="4" />
+          <path d="M88 136q-22 29-7 56 30 15 59-1 14-32-14-56" class="pose-fur" stroke-width="3" />
+          <ellipse cx="110" cy="172" rx="22" ry="24" class="pose-belly" />
+          <path d="M82 155q-14 30 15 24l13-17m29-7q14 30-16 24l-13-17" class="pose-arms" />
+          <g class="clasped-hands">
+            <path d="M110 173q-24-7-13-22l9-14q4-3 4 4 0-7 4-4l9 14q11 15-13 22Z" class="pose-belly" stroke-width="3" />
+            <path d="M110 141v29m-10-14 5 7m15-7-5 7" class="pose-lines" stroke-width="2" />
+          </g>
+          <path d="m69 202 18 1m48 0 18-1" class="pose-lines" stroke-width="3" />
+        </template>
+        <template v-else>
+          <path d="m89 171-14 33-15 3m69-36 13 33 16 3" class="pose-arms" />
+          <path d="M84 113q-22 31-6 66 30 17 65-2 11-39-16-64" class="pose-fur" stroke-width="3" />
+          <ellipse cx="111" cy="153" rx="23" ry="29" class="pose-belly" />
+          <path d="M80 132q-24 20 4 31l47-14m11-17q25 23-3 29l-46-12" class="pose-arms" />
+          <path d="m122 147 12-2q9 3 3 10l-13 3m-25-12-10-2q-9 3-3 10l11 3" class="pose-belly" stroke-width="3" />
+        </template>
+      </g>
       <template v-if="character === 'jannabi'">
         <path d="M149 161c44 36 74-8 49-26-20-14-28 12-11 12" fill="none" stroke="#946443" stroke-width="13" stroke-linecap="round" />
         <path d="M82 159 64 201q9 15 25 4l20-36m21-7 14 42q14 12 26-2l-16-48" fill="#946443" stroke="#664832" stroke-width="3" />
@@ -23,7 +43,8 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
           <path d="M80 103q-18-43 6-46 15-4 24 10 8-15 26-10 20 8 6 45 16 21-30 23-45 0-32-22" fill="#f1d9b0"/>
           <path d="m99 33 2-16 12 15 12-12 2 15" fill="#a8764e" stroke="#664832" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
           <g class="eyes"><ellipse cx="92" cy="82" rx="4" ry="7" fill="#352f28"/><ellipse cx="129" cy="82" rx="4" ry="7" fill="#352f28"/></g>
-          <g v-if="mood === 'sly'" class="sly-face"><path d="m82 69 20 8m18 0 20-9" fill="none" stroke="#664832" stroke-width="5" stroke-linecap="round"/><path d="M87 103q25 32 50-7-28 15-50 7" fill="#fff8df" stroke="#664832" stroke-width="3"/><path d="m107 110 1 7m11-10 2 6" stroke="#664832" stroke-width="2"/></g>
+          <path v-if="pose === 'plead'" d="M98 109q12-6 24 0" fill="none" stroke="#664832" stroke-width="3" stroke-linecap="round"/>
+          <g v-else-if="mood === 'sly'" class="sly-face"><path d="m82 69 20 8m18 0 20-9" fill="none" stroke="#664832" stroke-width="5" stroke-linecap="round"/><path d="M87 103q25 32 50-7-28 15-50 7" fill="#fff8df" stroke="#664832" stroke-width="3"/><path d="m107 110 1 7m11-10 2 6" stroke="#664832" stroke-width="2"/></g>
           <path v-else-if="['sad','lose','urgent'].includes(mood)" d="M94 113q17-18 33 0" fill="none" stroke="#664832" stroke-width="3" stroke-linecap="round"/>
           <path v-else d="M91 105q21 24 42-3" fill="#fff8df" stroke="#664832" stroke-width="3" stroke-linejoin="round"/>
           <ellipse cx="110" cy="99" rx="7" ry="4" fill="#8e6249"/><circle cx="78" cy="99" r="7" fill="#ce8b67" opacity=".6"/><circle cx="145" cy="98" r="7" fill="#ce8b67" opacity=".6"/>
@@ -39,7 +60,8 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
           <path d="M59 76q-5-34 39-40 60-9 70 34 11 40-43 52-57 10-66-46" fill="#aabc77" stroke="#496341" stroke-width="3"/>
           <ellipse cx="89" cy="67" rx="16" ry="19" fill="#f6f2d5"/><ellipse cx="136" cy="65" rx="16" ry="19" fill="#f6f2d5"/>
           <g class="eyes"><ellipse cx="94" cy="71" rx="4" ry="7" fill="#304634"/><ellipse cx="140" cy="69" rx="4" ry="7" fill="#304634"/></g>
-          <g v-if="mood === 'whistle'"><path d="M96 96q10 14 22 1" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round"/><ellipse cx="127" cy="97" rx="5" ry="4" fill="#496341"/><text class="whistle-note" x="159" y="75" fill="#496341" font-size="28">♪</text></g>
+          <path v-if="pose === 'plead'" d="M101 101q12-6 23 0" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round"/>
+          <g v-else-if="mood === 'whistle'"><path d="M96 96q10 14 22 1" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round"/><ellipse cx="127" cy="97" rx="5" ry="4" fill="#496341"/><text class="whistle-note" x="159" y="75" fill="#496341" font-size="28">♪</text></g>
           <path v-else-if="['sad','lose','urgent'].includes(mood)" d="M98 104q15-13 28-2" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round"/>
           <path v-else d="M96 96q17 17 35-3" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round"/>
           <ellipse cx="77" cy="92" rx="9" ry="5" fill="#d1a078" opacity=".6"/><ellipse cx="148" cy="89" rx="9" ry="5" fill="#d1a078" opacity=".6"/>
@@ -59,6 +81,24 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
 </template>
 <style scoped lang="scss">
 .character { width: 100%; height: 100%; overflow: visible; }
+.character.jannabi { --pose-fur: #a8764e; --pose-line: #664832; --pose-belly: #f1d9b0; }
+.character.grasshopper { --pose-fur: #92aa60; --pose-line: #496341; --pose-belly: #c8d59b; }
+.pose-fur { fill: var(--pose-fur); stroke: var(--pose-line); }
+.pose-belly { fill: var(--pose-belly); stroke: var(--pose-line); }
+.pose-arms { fill: none; stroke: var(--pose-line); stroke-width: 11px; }
+.pose-lines { fill: none; stroke: var(--pose-line); }
+.character:not(.pose-normal) .body > :not(.head):not(.pose-limbs) { display: none; }
+.character:not(.pose-normal) .body { animation: none; transform: none; }
+.pose-plead .head { animation: pleading 1.5s ease-in-out infinite; transform-origin: 110px 110px; }
+.clasped-hands { animation: clasp 1.5s ease-in-out infinite; transform-origin: 110px 170px; }
+.pose-consider .head { animation: considering 2.8s ease-in-out infinite; }
+@keyframes pleading { 0%, 100% { transform: translateY(22px) scale(.88); } 50% { transform: translateY(29px) rotate(-5deg) scale(.88); } }
+@keyframes clasp { 50% { transform: translateY(-3px) rotate(5deg); } }
+@keyframes considering { 0%, 100% { transform: rotate(3deg); } 50% { transform: rotate(-7deg) translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) {
+  .pose-plead .head { animation: none; transform: translateY(22px) scale(.88); }
+  .pose-consider .head, .clasped-hands { animation: none; }
+}
 .portrait .body { transform-origin: 110px 80px; }
 .mood-sly .head { animation: chuckle .22s ease-in-out infinite alternate; }
 .mood-sly .eyes { transform: scaleY(.6); transform-origin: 110px 82px; }

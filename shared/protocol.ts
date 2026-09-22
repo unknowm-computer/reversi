@@ -13,13 +13,16 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ready'), ...identity }),
   z.object({ type: z.literal('character'), ...identity, character: z.enum(['jannabi', 'grasshopper']) }),
   z.object({ type: z.literal('move'), ...gameIdentity, index: z.number().int().min(0).max(63) }),
+  z.object({ type: z.literal('timeout-choice'), ...gameIdentity, choice: z.enum(['forgive', 'end']) }),
   z.object({ type: z.literal('resign'), ...gameIdentity }),
   z.object({ type: z.literal('rematch'), ...gameIdentity }),
   z.object({ type: z.literal('leave'), ...identity }),
 ]);
 export type Command = z.infer<typeof commandSchema>;
 export interface RoomPlayer { color: Color; connected: boolean; ready: boolean; rematch: boolean }
+export type TimeoutState = { phase: 'decision'; loser: Color } | { phase: 'penalty'; loser: Color; resumesAt: number };
 export interface RoomSnapshot {
+  timeout: TimeoutState | null;
   code: string;
   settings: GameSettings;
   players: RoomPlayer[];

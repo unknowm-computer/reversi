@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue';
 import AppIcon from './AppIcon.vue';
-interface Props { title: string }
-defineProps<Props>();
+interface Props { title: string; dismissible?: boolean }
+withDefaults(defineProps<Props>(), { dismissible: true });
 const emit = defineEmits<{ (event: 'close'): void }>();
 const dialog = ref<HTMLDialogElement | null>(null);
 let previous: HTMLElement | null = null;
 onMounted(() => { previous = document.activeElement instanceof HTMLElement ? document.activeElement : null; dialog.value?.showModal(); });
 onUnmounted(() => previous?.focus());
 </script>
-<template><dialog ref="dialog" class="modal" aria-labelledby="dialog-title" @cancel.prevent="emit('close')" @click="($event.target === dialog) && emit('close')"><section class="modal-inner"><button class="modal-close text-button" aria-label="닫기" @click="emit('close')"><AppIcon name="close" /></button><h2 id="dialog-title">{{ title }}</h2><slot /></section></dialog></template>
+<template><dialog ref="dialog" class="modal" aria-labelledby="dialog-title" @cancel.prevent="dismissible && emit('close')" @click="dismissible && ($event.target === dialog) && emit('close')"><section class="modal-inner"><button v-if="dismissible" class="modal-close text-button" aria-label="닫기" @click="emit('close')"><AppIcon name="close" /></button><h2 id="dialog-title">{{ title }}</h2><slot /></section></dialog></template>
 <style scoped lang="scss">
 .modal { color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 24px; padding: 0; width: min(480px, calc(100% - 32px)); max-height: calc(100dvh - 40px); box-shadow: 0 24px 100px #142e3533; }
 .modal::backdrop { background: #142e3580; backdrop-filter: blur(5px); }

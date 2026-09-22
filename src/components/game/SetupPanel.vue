@@ -57,7 +57,7 @@ watch(() => config.mode, (mode, previous) => {
         <label v-if="config.mode === 'local'"><span>무르기 기회</span><select v-model="config.undoLimit"><option :value="1">인당 1회</option><option :value="3">인당 3회</option><option :value="-1">무제한</option><option :value="0">사용 안 함</option></select></label>
         <div v-else class="undo-info"><span>무르기 기회</span><strong><AppIcon name="undo" />{{ config.mode === 'ai' ? '마음껏, 무제한' : '온라인은 사용 안 함' }}</strong></div>
       </div>
-      <p v-if="config.mode === 'ai' && config.seconds" class="timeout-note">시간이 다 되면 꿀밤 한 대! 같은 차례에서 시간을 새로 드려요.</p>
+      <p v-if="config.seconds" class="timeout-note">{{ config.mode === 'ai' ? '시간이 다 되면 꿀밤 한 대! 같은 차례에서 시간을 새로 드려요.' : '시간이 다 되면 상대가 봐주거나 게임을 끝낼 수 있어요.' }}</p>
       <template v-if="config.mode === 'online'">
         <button class="primary start-button" :disabled="!connected || busy" @click="emit('create', { ...config })">{{ connected ? '새로운 방 만들기' : '서버에 연결 중…' }}<AppIcon name="arrow" /></button>
         <form class="join-form" @submit.prevent="emit('join', { ...config }, code)"><label class="sr-only" for="room-code">친구의 방 코드</label><input id="room-code" v-model="code" placeholder="친구의 방 코드 6자리" maxlength="6" pattern="[A-Za-z2-9]{6}" required autocomplete="off" /><button class="secondary" :disabled="!connected || busy">입장</button></form>

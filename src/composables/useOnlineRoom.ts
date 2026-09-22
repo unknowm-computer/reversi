@@ -61,6 +61,9 @@ export function useOnlineRoom(onState: (room: RoomSnapshot) => void, onClosed: (
     const base = { requestId: createId(), gameId: game.gameId, expectedRevision: game.revision };
     void send(type === 'move' ? { type, ...base, index } : { type, ...base });
   }
+  function timeoutChoice(choice: 'forgive' | 'end', game: GameState): void {
+    if (!busy.value) void send({ type: 'timeout-choice', choice, requestId: createId(), gameId: game.gameId, expectedRevision: game.revision });
+  }
   async function leave(): Promise<boolean> {
     if (room.value && connected.value) {
       const response = await send({ type: 'leave', requestId: createId() });
@@ -69,5 +72,5 @@ export function useOnlineRoom(onState: (room: RoomSnapshot) => void, onClosed: (
     session = null; save(); room.value = null; socket?.disconnect(); socket = null; connected.value = false; return true;
   }
   onUnmounted(() => socket?.disconnect());
-  return { room, color, connected, busy, error, hasSession: Boolean(session), connect, enter, ready, chooseCharacter, gameCommand, leave };
+  return { room, color, connected, busy, error, hasSession: Boolean(session), connect, enter, ready, chooseCharacter, gameCommand, timeoutChoice, leave };
 }

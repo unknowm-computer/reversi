@@ -4,6 +4,7 @@ import { useGameController } from './composables/useGameController';
 import { otherCharacter, type Character, type Color } from '../shared/game/types';
 import SetupPanel from './components/game/SetupPanel.vue';
 import MoveImpact from './components/game/MoveImpact.vue';
+import TimeoutChoiceScene from './components/game/TimeoutChoiceScene.vue';
 import TimeoutPenalty from './components/game/TimeoutPenalty.vue';
 import GameBoard from './components/game/GameBoard.vue';
 import PlayerPanel from './components/game/PlayerPanel.vue';
@@ -15,6 +16,7 @@ const game = useGameController();
 const { store, screen, online, audio, timer, status, myColor, available, canMove } = game;
 const modal = ref<'rules' | 'resign' | 'home' | null>(null);
 const resultDismissed = ref(false);
+watch(game.timeoutLoser, loser => { if (loser) modal.value = null; });
 const bottom = computed<Color>(() => myColor.value);
 const top = computed<Color>(() => bottom.value === 'black' ? 'white' : 'black');
 const modeName = computed(() => ({ ai: '혼자 놀기', local: '함께 놀기', online: '온라인 대전' })[store.settings.mode]);
@@ -55,14 +57,22 @@ function confirm(): void {
           <div class="board-stage"><GameBoard :board="game.impact.displayed.value.board" :legal="game.impact.busy.value ? [] : available" :turn="store.state.turn" :interactive="canMove && !modal && !resultVisible" :last-move="store.state.lastMove" :flipped="game.impact.displayed.value.flipped" :revision="store.state.revision" @move="game.move" /><MoveImpact v-if="game.impact.scene.value" :actor="character(game.impact.scene.value.actor)" :kind="game.impact.scene.value.kind" :count="game.impact.scene.value.count" /><TimeoutPenalty v-if="game.penalty.recipient.value" :recipient="character(game.penalty.recipient.value)" :paused="game.paused.value" /></div>
           <div class="board-legend"><span><i class="legal-dot" />놓을 수 있는 곳</span><span><i class="last-legend" />마지막으로 놓은 돌</span></div>
           <PlayerPanel :character="character(bottom)" :color="bottom" :count="store.counts[bottom]" :active="!store.state.result && store.state.turn === bottom" :label="label(bottom)" :mood="game.mood(bottom)" :remaining="timer.remaining.value" :seconds="store.settings.seconds" :undo-text="undoText(bottom)" />
-          <div class="game-controls"><button class="secondary" :disabled="!store.canUndo" @click="game.undo"><AppIcon name="undo" />한 수 무르기</button><button v-if="store.state.result" class="text-button" @click="resultDismissed = false">결과 보기<AppIcon name="arrow" /></button><button v-else class="text-button" @click="modal = 'resign'"><AppIcon name="flag" />기권하기</button></div>
+          <div class="game-controls"><button class="secondary" :disabled="!store.canUndo || game.timeoutPending.value || (store.settings.mode === 'local' && Boolean(game.penalty.recipient.value))" @click="game.undo"><AppIcon name="undo" />한 수 무르기</button><button v-if="store.state.result" class="text-button" @click="resultDismissed = false">결과 보기<AppIcon name="arrow" /></button><button v-else class="text-button" :disabled="game.timeoutPending.value" @click="modal = 'resign'"><AppIcon name="flag" />기권하기</button></div>
           <p v-if="store.settings.mode === 'online' && online.error.value" class="game-error" role="alert">{{ online.error.value }}</p>
         </div>
         <aside class="match-sidebar"><div class="match-card"><p class="eyebrow muted">ON THE BOARD</p><h2>지금, 보드 위에는</h2><div class="score-summary"><div><span class="summary-stone black" />흑<strong>{{ store.counts.black }}</strong></div><span class="score-colon">:</span><div><strong>{{ store.counts.white }}</strong>백<span class="summary-stone white" /></div></div><div class="score-bar"><span :style="{ width: `${percentBlack}%` }" /></div><p class="empty-count">빈칸 <strong>{{ store.counts.empty }}</strong>개 · 아직 기회는 있어요</p></div><div class="tip-card"><span class="tip-icon"><AppIcon name="leaf" /></span><p class="eyebrow">A LITTLE TIP</p><h3>{{ store.counts.empty <= 10 ? '마지막 한 수까지' : '모서리를 눈여겨보세요' }}</h3><p>{{ store.counts.empty <= 10 ? '이제 얼마 남지 않았어요. 마지막에 더 많은 돌을 가진 쪽이 승리해요.' : '한번 차지한 모서리의 돌은 뒤집히지 않아요. 든든한 내 편이 되어줄 거예요.' }}</p></div><div class="keyboard-note">방향키로 이동 · Enter로 착수<br>마우스와 터치로도 즐길 수 있어요</div></aside>
       </section>
     </main>
     <footer class="site-footer"><span>작은 보드 위, 우리의 느긋한 승부.</span><span class="footer-mark"><AppIcon name="leaf" />MADE FOR A LITTLE BREAK</span></footer>
-    <ModalDialog v-if="modal === 'rules'" title="한 판이면 익숙해져요." @close="modal = null"><div class="rules-content"><p>상대 돌을 내 돌 사이에 끼우면 내 색으로 뒤집을 수 있어요.</p><ol><li><strong>흑돌이 먼저 시작해요.</strong><span>초록 점으로 표시된 칸에 돌을 놓으세요.</span></li><li><strong>가로, 세로, 대각선 모두 가능해요.</strong><span>하나 이상의 상대 돌을 사이에 끼워야 해요.</span></li><li><strong>놓을 곳이 없으면 한 번 쉬어요.</strong><span>양쪽 모두 놓을 곳이 없으면 대국이 끝나요.</span></li><li><strong>마지막에 돌이 더 많으면 승리!</strong><span>같은 개수면 사이좋게 무승부예요.</span></li></ol><p class="rules-small">모든 대전의 기본 제한 시간은 한 수에 30초예요. 컴퓨터 대전은 시간 초과 시 꿀밤 연출 후 같은 차례에서 시간이 새로 시작돼요. 로컬·온라인 대전은 시간 초과 시 패배해요. 온라인은 연결이 끊겨도 시간이 계속 흐르며, 30초 안에 다시 연결해야 해요.</p><button class="primary" @click="modal = null">좋아요, 이해했어요<AppIcon name="arrow" /></button></div></ModalDialog>
+    <ModalDialog v-if="game.timeoutLoser.value && game.canDecideTimeout.value" :dismissible="false" title="한 번만 봐줄까?">
+      <TimeoutChoiceScene :recipient="character(game.timeoutLoser.value)" />
+      <p class="confirm-text">{{ game.name(game.timeoutLoser.value) }}가 조금 오래 고민했네요.<br>{{ game.name(game.timeoutDecider.value!) }}, 이번엔 어떻게 할까요?</p>
+      <p class="confirm-text">봐주면 꿀밤 한 대 후 같은 차례에서 {{ store.settings.seconds }}초를 새로 드려요. 게임 종료를 선택하면 {{ game.name(game.timeoutDecider.value!) }}의 승리예요.</p>
+      <div class="confirm-actions"><button class="secondary" :disabled="game.decisionBlocked.value" @click="game.chooseTimeout('forgive')">봐준다</button><button class="primary" :disabled="game.decisionBlocked.value" @click="game.chooseTimeout('end')">게임 종료</button></div>
+      <p v-if="store.settings.mode === 'online' && online.error.value" class="game-error" role="alert">{{ online.error.value }}</p>
+      <p v-if="game.decisionBlocked.value" class="confirm-text">연결과 요청 처리를 기다리고 있어요.</p>
+    </ModalDialog>
+    <ModalDialog v-else-if="modal === 'rules'" title="한 판이면 익숙해져요." @close="modal = null"><div class="rules-content"><p>상대 돌을 내 돌 사이에 끼우면 내 색으로 뒤집을 수 있어요.</p><ol><li><strong>흑돌이 먼저 시작해요.</strong><span>초록 점으로 표시된 칸에 돌을 놓으세요.</span></li><li><strong>가로, 세로, 대각선 모두 가능해요.</strong><span>하나 이상의 상대 돌을 사이에 끼워야 해요.</span></li><li><strong>놓을 곳이 없으면 한 번 쉬어요.</strong><span>양쪽 모두 놓을 곳이 없으면 대국이 끝나요.</span></li><li><strong>마지막에 돌이 더 많으면 승리!</strong><span>같은 개수면 사이좋게 무승부예요.</span></li></ol><p class="rules-small">모든 대전의 기본 제한 시간은 한 수에 30초예요. 컴퓨터 대전은 시간 초과 시 꿀밤 연출 후 같은 차례에서 시간이 새로 시작돼요. 함께 놀기·온라인은 시간 초과 시 상대가 봐주거나 게임을 끝낼 수 있어요. 봐주면 꿀밤 후 같은 차례에서 시간이 새로 시작돼요. 선택 중에는 대국 시간이 멈춰요. 온라인은 연결이 끊겨도 시간이 계속 흐르며, 30초 안에 다시 연결해야 해요.</p><button class="primary" @click="modal = null">좋아요, 이해했어요<AppIcon name="arrow" /></button></div></ModalDialog>
     <ModalDialog v-else-if="modal === 'resign' || modal === 'home'" :title="modal === 'resign' ? '이번 판은 여기까지 할까요?' : '처음으로 돌아갈까요?'" @close="modal = null"><p class="confirm-text">{{ modal === 'resign' ? `${game.name(store.settings.mode === 'local' ? store.state.turn : myColor)}의 기권으로 대국이 끝나요.` : store.settings.mode === 'online' || screen === 'lobby' ? '방을 나가면 친구와의 대국도 종료돼요.' : '진행 중인 대국은 저장되지 않아요.' }}</p><div class="confirm-actions"><button class="secondary" @click="modal = null">계속하기</button><button class="primary" @click="confirm">{{ modal === 'resign' ? '기권하기' : '돌아가기' }}</button></div></ModalDialog>
     <ModalDialog v-else-if="resultVisible" title="오늘의 한 판" @close="resultDismissed = true"><ResultPanel :game="store.state" :black-character="store.settings.blackCharacter" :can-undo="store.canUndo" :online="store.settings.mode === 'online'" :requested="Boolean(online.room.value?.players.find(p => p.color === myColor)?.rematch)" :busy="online.busy.value" @rematch="game.rematch" @home="game.home" @undo="game.undo" /></ModalDialog>
   </div>

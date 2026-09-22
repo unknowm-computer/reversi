@@ -93,18 +93,27 @@ describe('Authoritative online games', () => {
     const result = await command(black, { type: 'undo', requestId: randomUUID() } as unknown as Command);
     expect(result.errorCode).toBe('INVALID_COMMAND');
   });
-  it('rejects a move arriving at the deadline and awards the opponent the win', async () => {
-    const { black, room, advance } = await setup(30000, 30);
+  it('rejects a deadline move and lets only the opponent end the game', async () => {
+    const { black, white, room, advance } = await setup(30000, 30);
     advance(30001);
     const response = await command(black, { type: 'move', requestId: randomUUID(), gameId: room.game!.gameId, expectedRevision: 0, index: 19 });
-    expect(response.ok).toBe(false); expect(response.room!.game!.result).toEqual({ winner: 'white', reason: 'timeout' });
+    expect(response.ok).toBe(false); expect(response.room!.game!.result).toBeNull();
+    expect(response.room!.timeout).toEqual({ phase: 'decision', loser: 'black' }); expect(response.room!.deadline).toBeNull();
     expect(response.room!.game!.lastMove).toBeNull();
+    const choice: Command = { type: 'timeout-choice', choice: 'end', requestId: randomUUID(), gameId: room.game!.gameId, expectedRevision: response.room!.game!.revision };
+    expect((await command(black, choice)).errorCode).toBe('NOT_DECIDER');
+    const ended = await command(white, choice);
+    expect(ended.room!.game!.result).toEqual({ winner: 'white', reason: 'timeout' }); expect(ended.room!.timeout).toBeNull();
   });
   it('keeps the server timer running during disconnection', async () => {
     const { black, white, advance } = await setup(30000, 30);
     advance(10000); const disconnected = nextState(white, state => !state.players[0].connected); black.disconnect(); await disconnected;
-    const ended = nextState(white, state => Boolean(state.game?.result)); advance(21000);
-    expect((await ended).game!.result!.reason).toBe('timeout');
+    const pending = nextState(white, state => state.timeout?.phase === 'decision'); advance(21000);
+    const decision = await pending; expect(decision.game!.result).toBeNull(); expect(decision.deadline).toBeNull();
+    const denied = await command(white, { type: 'timeout-choice', choice: 'forgive', requestId: randomUUID(), gameId: decision.game!.gameId, expectedRevision: decision.game!.revision });
+    expect(denied.errorCode).toBe('PLAYER_DISCONNECTED');
+    const ended = nextState(white, state => state.game?.result?.reason === 'disconnect'); advance(10000);
+    expect((await ended).timeout).toBeNull();
   });
   it('closes a room after both players remain disconnected beyond the grace period', async () => {
     const { black, white, room, created, connect, advance } = await setup(100);
@@ -113,5 +122,55 @@ describe('Authoritative online games', () => {
     const reconnect = await connect(); advance(1000);
     const result = await command(reconnect, { type: 'resume', requestId: randomUUID(), code: room.code, token: created.token! });
     expect(result.errorCode).toBe('ROOM_EXPIRED');
+  });
+});
+
+
+describe('Online timeout forgiveness', () => {
+  it('synchronizes the penalty, blocks moves and duplicate decisions, and restarts the same turn', async () => {
+    const { black, white, room, advance } = await setup(30000, 30);
+    const waiting = nextState(white, state => state.timeout?.phase === 'decision'); advance(30001); const pending = await waiting;
+    const base = { gameId: room.game!.gameId, expectedRevision: pending.game!.revision };
+    expect((await command(black, { type: 'move', index: 19, requestId: randomUUID(), ...base })).errorCode).toBe('TIMEOUT_PENDING');
+    const synced = nextState(black, state => state.timeout?.phase === 'penalty');
+    const request: Command = { type: 'timeout-choice', choice: 'forgive', requestId: randomUUID(), ...base };
+    const response = await command(white, request); const penalty = await synced;
+    expect(penalty).toEqual(response.room); expect(penalty.game!.board).toEqual(room.game!.board); expect(penalty.game!.turn).toBe('black');
+    expect(penalty.deadline).toBeNull(); expect(penalty.game!.result).toBeNull();
+    const duplicate = await command(white, request); expect(duplicate.room!.timeout).toEqual(penalty.timeout);
+    expect((await command(white, { ...request, requestId: randomUUID() })).errorCode).toBe('STALE_STATE');
+    expect((await command(black, { type: 'move', index: 19, requestId: randomUUID(), gameId: room.game!.gameId, expectedRevision: penalty.game!.revision })).errorCode).toBe('TIMEOUT_PENDING');
+    const resumed = nextState(white, state => state.timeout === null && state.game!.revision > penalty.game!.revision); advance(2400);
+    const ready = await resumed; expect(ready.game!.turn).toBe('black');
+    expect(ready.deadline! - ready.serverNow).toBeGreaterThan(29900); expect(ready.deadline! - ready.serverNow).toBeLessThanOrEqual(30000);
+    const moved = await command(black, { type: 'move', index: 19, requestId: randomUUID(), gameId: room.game!.gameId, expectedRevision: ready.game!.revision }); expect(moved.ok).toBe(true);
+    const again = nextState(black, state => state.timeout?.phase === 'decision'); advance(30001); expect((await again).timeout?.loser).toBe('white');
+  });
+  it('restores the pending choice after the deciding player reconnects', async () => {
+    const { black, white, room, joined, connect, advance } = await setup(30000, 30);
+    const waiting = nextState(white, state => state.timeout?.phase === 'decision'); advance(30001); await waiting;
+    const disconnected = nextState(black, state => !state.players[1].connected); white.disconnect(); await disconnected;
+    const replacement = await connect();
+    const restored = await command(replacement, { type: 'resume', requestId: randomUUID(), code: room.code, token: joined.token! });
+    expect(restored.room!.timeout).toEqual({ phase: 'decision', loser: 'black' }); expect(restored.room!.game!.result).toBeNull();
+    const ended = await command(replacement, { type: 'timeout-choice', choice: 'end', requestId: randomUUID(), gameId: room.game!.gameId, expectedRevision: restored.room!.game!.revision });
+    expect(ended.room!.game!.result).toEqual({ winner: 'white', reason: 'timeout' });
+  });
+});
+
+describe('Timeout penalty reconnect', () => {
+  it('restores the server penalty deadline rather than restarting the animation period', async () => {
+    const { black, white, room, created, connect, advance } = await setup(30000, 60);
+    const waiting = nextState(white, state => state.timeout?.phase === 'decision'); advance(60001); const pending = await waiting;
+    const response = await command(white, { type: 'timeout-choice', choice: 'forgive', requestId: randomUUID(), gameId: room.game!.gameId, expectedRevision: pending.game!.revision });
+    const original = response.room!.timeout;
+    const disconnected = nextState(white, state => !state.players[0].connected); black.disconnect(); await disconnected;
+    advance(1000); const replacement = await connect();
+    const restored = await command(replacement, { type: 'resume', requestId: randomUUID(), code: room.code, token: created.token! });
+    expect(restored.room!.timeout).toEqual(original);
+    expect(restored.room!.deadline).toBeNull(); expect(restored.room!.game!.board).toEqual(room.game!.board);
+    const resumed = nextState(white, state => !state.timeout); advance(1500); const ready = await resumed;
+    expect(ready.deadline! - ready.serverNow).toBeGreaterThan(59800);
+    expect(ready.game!.turn).toBe('black'); expect(ready.game!.result).toBeNull();
   });
 });

@@ -1,6 +1,7 @@
 import { onUnmounted, ref } from 'vue';
 import type { Color } from '../../shared/game/types';
-export const TIMEOUT_PENALTY_MS = 2400;
+import { TIMEOUT_PENALTY_MS } from '../../shared/game/types';
+export { TIMEOUT_PENALTY_MS } from '../../shared/game/types';
 /** A cosmetic interruption: board, turn, score and undo history are untouched. */
 export function useTimeoutPenalty(onComplete: () => void) {
   const recipient = ref<Color | null>(null);
@@ -12,9 +13,9 @@ export function useTimeoutPenalty(onComplete: () => void) {
     deadline = Date.now() + remaining;
     handle = window.setTimeout(() => { recipient.value = null; onComplete(); }, remaining);
   }
-  function begin(color: Color): void {
+  function begin(color: Color, duration = TIMEOUT_PENALTY_MS): void {
     window.clearTimeout(handle);
-    recipient.value = color; remaining = TIMEOUT_PENALTY_MS; resume();
+    recipient.value = color; remaining = Math.max(0, duration); resume();
   }
   function pause(): void {
     if (!recipient.value) return;

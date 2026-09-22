@@ -30,3 +30,5 @@ export const DEFAULT_SETTINGS: GameSettings = { mode: 'ai', seconds: 30, undoLim
 export const characterName = (character: Character): string => character === 'jannabi' ? '잔나비' : '베짱이';
 export const otherCharacter = (character: Character): Character => character === 'jannabi' ? 'grasshopper' : 'jannabi';
 export const colorName = (color: Color): string => color === 'black' ? '흑' : '백';
+
+export const TIMEOUT_PENALTY_MS = 2400;

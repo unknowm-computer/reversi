@@ -6,7 +6,7 @@ import { useGameAudio } from './useGameAudio';
 import { useCharacterReaction } from './useCharacterReaction';
 import { useMoveImpact, IMPACT_MS } from './useMoveImpact';
 import { useTimeoutPenalty } from './useTimeoutPenalty';
-import { legalMoves } from '../../shared/game/rules';
+import { legalMoves, opposite } from '../../shared/game/rules';
 import { characterName, otherCharacter, type Color, type GameSettings, type GameState, type Reaction } from '../../shared/game/types';
 export function useGameController() {
   const store = useGameStore();
@@ -15,17 +15,20 @@ export function useGameController() {
   const impact = useMoveImpact(() => store.state, () => audio.sfx('bonk'));
   const paused = ref(document.hidden), thinking = ref(false), animating = ref(false);
   const clock = ref(Date.now());
+  const localTimeout = ref<Color | null>(null);
+  let remotePenaltyKey: string | null = null;
   let worker: Worker | null = null, animationTimer: number | undefined;
   let pendingTurn = false;
   let warnedHalf = false, warnedUrgent = false;
   const penalty = useTimeoutPenalty(() => {
     warnedHalf = warnedUrgent = false;
+    if (store.settings.mode === 'online') return;
     timer.start(store.settings.seconds * 1000);
     startAi();
   });
   const timer = useTurnTimer(() => {
-    if (store.settings.mode !== 'ai') { finish(store.state.turn, 'timeout'); return; }
-    cancelWork(); timer.stop(); reaction.reset();
+    cancelWork(); timer.stop(); reaction.reset(); pendingTurn = false;
+    if (store.settings.mode === 'local') { localTimeout.value = store.state.turn; return; }
     penalty.begin(store.state.turn); audio.sfx('bonk');
   });
   const online = useOnlineRoom(room => {
@@ -36,23 +39,36 @@ export function useGameController() {
       store.online(room.game, room.settings); screen.value = 'game';
       if (changed) {
         warnedHalf = warnedUrgent = false;
-        if (room.game.revision > 0 && before.gameId === room.game.gameId) {
+        if (room.game.revision > 0 && before.gameId === room.game.gameId && (room.game.flipped.length || room.game.result)) {
           reaction.transition(before, room.game, store.settings.blackCharacter); audio.sfx(reaction.event.value, room.game.flipped.length);
         } else reaction.reset();
       }
+      if (room.timeout?.phase === 'penalty') {
+        const key = `${room.game.gameId}:${room.timeout.resumesAt}`;
+        if (remotePenaltyKey !== key) {
+          remotePenaltyKey = key; cancelWork(); reaction.reset();
+          penalty.begin(room.timeout.loser, room.timeout.resumesAt - room.serverNow); audio.sfx('bonk');
+        }
+      } else { remotePenaltyKey = null; penalty.cancel(); }
       timer.sync(room.deadline, room.serverNow);
     } else { screen.value = 'lobby'; store.active = false; }
-  }, () => { cancelWork(); timer.stop(); store.active = false; screen.value = 'setup'; });
+  }, () => { cancelWork(); penalty.cancel(); localTimeout.value = null; remotePenaltyKey = null; timer.stop(); store.active = false; screen.value = 'setup'; });
   const myColor = computed<Color>(() => store.settings.mode === 'online' ? online.color.value : 'black');
   const available = computed(() => store.state.result ? [] : legalMoves(store.state.board, store.state.turn));
   const disconnected = computed(() => store.settings.mode === 'online' && (!online.connected.value || online.room.value?.players.some(p => !p.connected)));
-  const canMove = computed(() => screen.value === 'game' && !store.state.result && !penalty.recipient.value && !impact.busy.value && !animating.value && !thinking.value && !paused.value && !disconnected.value && !online.busy.value && (store.settings.mode !== 'online' || store.state.turn === myColor.value));
+  const timeoutLoser = computed<Color | null>(() => store.settings.mode === 'online' ? (online.room.value?.timeout?.phase === 'decision' ? online.room.value.timeout.loser : null) : localTimeout.value);
+  const timeoutPending = computed(() => store.settings.mode === 'online' ? Boolean(online.room.value?.timeout) : localTimeout.value !== null);
+  const timeoutDecider = computed(() => timeoutLoser.value ? opposite(timeoutLoser.value) : null);
+  const canDecideTimeout = computed(() => timeoutDecider.value !== null && (store.settings.mode === 'local' || timeoutDecider.value === myColor.value));
+  const decisionBlocked = computed(() => Boolean(disconnected.value || online.busy.value || paused.value));
+  const canMove = computed(() => screen.value === 'game' && !timeoutPending.value && !store.state.result && !penalty.recipient.value && !impact.busy.value && !animating.value && !thinking.value && !paused.value && !disconnected.value && !online.busy.value && (store.settings.mode !== 'online' || store.state.turn === myColor.value));
   function name(color: Color): string { return characterName(color === 'black' ? store.settings.blackCharacter : otherCharacter(store.settings.blackCharacter)); }
   const status = computed(() => {
     if (impact.scene.value) return `한 수에 ${impact.scene.value.count}개! 강력한 한 방!`;
     if (store.state.result) return store.state.result.winner ? `${name(store.state.result.winner)}의 승리!` : '사이좋게 무승부!';
     if (disconnected.value) return '연결을 기다리고 있어요. 서버 시간은 계속 흐릅니다.';
     if (paused.value) return '잠시 쉬어가는 중';
+    if (timeoutDecider.value) return `${name(timeoutDecider.value)}의 선택을 기다리고 있어요. 대국 시간은 멈춰 있어요.`;
     if (penalty.recipient.value) return `${name(penalty.recipient.value)}, 꿀밤 한 대! 같은 차례로 계속해요.`;
     if (animating.value) return '돌을 뒤집고 있어요…';
     if (thinking.value) return '잔나비가 한 수를 고민하고 있어요…';
@@ -61,7 +77,7 @@ export function useGameController() {
     return `${name(store.state.turn)} · ${store.state.turn === 'black' ? '흑' : '백'}의 차례예요.`;
   });
   function mood(color: Color): Reaction {
-    if (reaction.corner.value?.actor === color && reaction.corner.value.until > clock.value) return reaction.corner.value.mood;
+    if (reaction.corner.value && reaction.corner.value.until > clock.value) return reaction.corner.value.actor === color ? reaction.corner.value.mood : 'sad';
     if (penalty.recipient.value) return penalty.recipient.value === color ? 'sad' : 'happy';
     if (reaction.until.value > clock.value) return reaction.reactions.value[color];
     if (store.state.result) return store.state.result.winner === null ? 'draw' : store.state.result.winner === color ? 'win' : 'lose';
@@ -92,7 +108,7 @@ export function useGameController() {
   function nextTurn(): void { pendingTurn = false; animating.value = false; timer.start(store.settings.seconds * 1000); startAi(); }
   function commit(index: number): void {
     timer.update();
-    if (store.state.result || penalty.recipient.value) return;
+    if (store.state.result || penalty.recipient.value || timeoutPending.value) return;
     const before = store.state;
     if (!store.move(index, timer.remaining.value)) return;
     timer.stop(); warnedHalf = warnedUrgent = false;
@@ -107,6 +123,7 @@ export function useGameController() {
     if (store.settings.mode === 'online') online.gameCommand('move', store.state, index); else commit(index);
   }
   function start(settings: GameSettings): void {
+    localTimeout.value = null; remotePenaltyKey = null;
     cancelWork(); penalty.cancel(); pendingTurn = false; audio.reset(); reaction.reset();
     store.start({ ...settings, blackCharacter: settings.mode === 'ai' ? 'grasshopper' : settings.blackCharacter });
     screen.value = 'game'; warnedHalf = warnedUrgent = false; paused.value = document.hidden;
@@ -114,7 +131,7 @@ export function useGameController() {
     void audio.unlock(); audio.sfx('button');
   }
   function undo(): void {
-    if (!store.canUndo) return;
+    if (!store.canUndo || timeoutPending.value || (store.settings.mode === 'local' && penalty.recipient.value)) return;
     cancelWork(); penalty.cancel(); pendingTurn = false; audio.reset();
     const restored = store.undo();
     if (!restored) return;
@@ -124,15 +141,24 @@ export function useGameController() {
     warnedHalf = restored.remaining <= store.settings.seconds * 500;
     warnedUrgent = restored.remaining <= 5000;
   }
+  function chooseTimeout(choice: 'forgive' | 'end'): void {
+    if (!canDecideTimeout.value || decisionBlocked.value || timeoutLoser.value === null) return;
+    if (store.settings.mode === 'online') { online.timeoutChoice(choice, store.state); return; }
+    const loser = timeoutLoser.value;
+    localTimeout.value = null;
+    if (choice === 'end') { finish(loser, 'timeout'); return; }
+    cancelWork(); timer.stop(); reaction.reset(); audio.reset();
+    penalty.begin(loser); audio.sfx('bonk');
+  }
   function finish(loser: Color, reason: 'resign' | 'timeout'): void {
     if (store.state.result || screen.value !== 'game') return;
     if (store.settings.mode === 'online') { if (reason === 'resign') online.gameCommand('resign', store.state); return; }
-    cancelWork(); penalty.cancel(); pendingTurn = false; timer.stop();
+    localTimeout.value = null; cancelWork(); penalty.cancel(); pendingTurn = false; timer.stop();
     const before = store.state; store.finish(loser, reason); reaction.transition(before, store.state, store.settings.blackCharacter); audio.sfx('end');
   }
   async function home(): Promise<void> {
     if (store.settings.mode === 'online' || online.room.value) { if (!(await online.leave())) return; }
-    cancelWork(); penalty.cancel(); pendingTurn = false; timer.stop(); audio.reset(); store.active = false; screen.value = 'setup'; reaction.reset();
+    localTimeout.value = null; cancelWork(); penalty.cancel(); pendingTurn = false; timer.stop(); audio.reset(); store.active = false; screen.value = 'setup'; reaction.reset();
   }
   function rematch(): void {
     if (store.settings.mode === 'online') online.gameCommand('rematch', store.state); else start(store.settings);
@@ -142,13 +168,14 @@ export function useGameController() {
     if (screen.value !== 'game' || store.settings.mode === 'online' || store.state.result) return;
     if (document.hidden) { timer.pause(); penalty.pause(); cancelWork(); }
     else if (penalty.recipient.value) penalty.resume();
+    else if (timeoutPending.value) return;
     else if (pendingTurn) nextTurn();
     else { timer.resume(); startAi(); }
   }
   document.addEventListener('visibilitychange', visibility);
   const pulse = window.setInterval(() => {
     clock.value = Date.now();
-    if (screen.value !== 'game' || store.state.result || !store.settings.seconds || penalty.recipient.value || paused.value || animating.value) return;
+    if (screen.value !== 'game' || store.state.result || !store.settings.seconds || timeoutPending.value || penalty.recipient.value || paused.value || animating.value) return;
     if (timer.remaining.value <= 5000 && !warnedUrgent) { warnedUrgent = true; warnedHalf = true; audio.sfx('urgent'); }
     else if (timer.remaining.value <= store.settings.seconds * 500 && !warnedHalf) { warnedHalf = true; audio.sfx('tick'); }
   }, 150);
@@ -157,5 +184,5 @@ export function useGameController() {
   }, { immediate: true });
   if (online.hasSession) online.connect();
   onUnmounted(() => { cancelWork(); window.clearInterval(pulse); document.removeEventListener('visibilitychange', visibility); });
-  return { store, screen, audio, online, timer, penalty, impact, status, thinking, animating, paused, available, canMove, myColor, name, mood, move, start, undo, finish, home, rematch };
+  return { store, screen, audio, online, timer, penalty, impact, status, thinking, animating, paused, available, canMove, myColor, timeoutLoser, timeoutPending, timeoutDecider, canDecideTimeout, decisionBlocked, chooseTimeout, name, mood, move, start, undo, finish, home, rematch };
 }

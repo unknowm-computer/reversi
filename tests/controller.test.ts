@@ -32,9 +32,23 @@ describe('Controller lifecycle', () => {
     controller.store.state.board[1] = 'white'; controller.store.state.board[2] = 'black';
     controller.move(0);
     expect(controller.impact.scene.value).toBeNull(); expect(controller.mood('black')).toBe('whistle');
+    expect(controller.mood('white')).toBe('sad');
     expect(controller.impact.displayed.value.board[1]).toBe('black');
     vi.advanceTimersByTime(460); expect(FakeWorker.instances).toHaveLength(1);
+    expect(controller.mood('white')).toBe('sad');
     controller.undo(); expect(controller.mood('black')).not.toBe('whistle');
+    expect(controller.mood('white')).not.toBe('sad');
+  });
+
+  it.each(['jannabi', 'grasshopper'] as const)('pairs %s corner celebration with a sad opponent until it expires', (blackCharacter) => {
+    controller.start({ ...DEFAULT_SETTINGS, blackCharacter, mode: 'local', seconds: 0 });
+    controller.store.state.turn = 'white';
+    controller.store.state.board[1] = 'black'; controller.store.state.board[2] = 'white';
+    controller.move(0);
+    expect(controller.mood('white')).toBe(blackCharacter === 'jannabi' ? 'whistle' : 'sly');
+    expect(controller.mood('black')).toBe('sad');
+    vi.advanceTimersByTime(2700);
+    expect(controller.mood('black')).toBe('idle'); expect(controller.mood('white')).toBe('idle');
   });
 
   it('holds AI and the next turn clock until the large capture impact and flips finish', () => {
@@ -70,7 +84,7 @@ describe('Controller lifecycle', () => {
   it('pauses time on a hidden tab and resumes without granting extra time', () => {
     controller.start({ ...DEFAULT_SETTINGS, mode: 'local', seconds: 30 }); vi.advanceTimersByTime(10000); hidden(true); vi.advanceTimersByTime(60000);
     expect(controller.store.state.result).toBeNull(); expect(controller.timer.remaining.value).toBe(20000);
-    hidden(false); vi.advanceTimersByTime(20000); expect(controller.store.state.result?.reason).toBe('timeout');
+    hidden(false); vi.advanceTimersByTime(20000); expect(controller.timeoutLoser.value).toBe('black'); expect(controller.store.state.result).toBeNull();
   });
   it('handles hiding during animation and AI computation', () => {
     controller.start(DEFAULT_SETTINGS); controller.move(19); hidden(true); vi.advanceTimersByTime(2000);
@@ -139,5 +153,42 @@ describe('AI timeout bonk', () => {
     controller.undo(); expect(controller.penalty.recipient.value).toBeNull(); expect(controller.timer.remaining.value).toBe(25000);
     vi.advanceTimersByTime(TIMEOUT_PENALTY_MS); expect(controller.store.state.turn).toBe('black');
     expect(FakeWorker.instances).toHaveLength(1); expect(controller.timer.remaining.value).toBe(22600);
+  });
+});
+
+
+describe('Local timeout choice', () => {
+  it('waits without changing the board or accepting moves, then forgives with a fresh clock', () => {
+    controller.start({ ...DEFAULT_SETTINGS, mode: 'local' });
+    const before = [...controller.store.state.board];
+    vi.advanceTimersByTime(30000);
+    expect(controller.timeoutLoser.value).toBe('black'); expect(controller.timeoutDecider.value).toBe('white');
+    expect(controller.canDecideTimeout.value).toBe(true); expect(controller.canMove.value).toBe(false);
+    controller.move(19); vi.advanceTimersByTime(60000);
+    expect(controller.store.state.board).toEqual(before); expect(controller.timer.remaining.value).toBe(0);
+    controller.chooseTimeout('forgive'); controller.chooseTimeout('end');
+    expect(controller.penalty.recipient.value).toBe('black'); expect(controller.store.state.result).toBeNull();
+    vi.advanceTimersByTime(TIMEOUT_PENALTY_MS - 1); expect(controller.canMove.value).toBe(false);
+    vi.advanceTimersByTime(1); expect(controller.canMove.value).toBe(true); expect(controller.timer.remaining.value).toBe(30000);
+    expect(controller.store.state.turn).toBe('black'); expect(controller.store.state.board).toEqual(before);
+    vi.advanceTimersByTime(30000); controller.chooseTimeout('end');
+    expect(controller.store.state.result).toEqual({ winner: 'white', reason: 'timeout' });
+  });
+  it('handles a deadline click, blocks undo, and preserves the choice through hiding', () => {
+    controller.start({ ...DEFAULT_SETTINGS, mode: 'local', seconds: 30 }); controller.move(19); vi.advanceTimersByTime(500);
+    vi.setSystemTime(Date.now() + 30000); controller.move(18);
+    expect(controller.store.state.revision).toBe(1); expect(controller.timeoutLoser.value).toBe('white');
+    controller.undo(); expect(controller.store.state.revision).toBe(1);
+    hidden(true); vi.advanceTimersByTime(60000); hidden(false);
+    expect(controller.timeoutLoser.value).toBe('white'); expect(controller.canMove.value).toBe(false);
+    controller.chooseTimeout('forgive'); hidden(true); vi.advanceTimersByTime(10000);
+    expect(controller.penalty.recipient.value).toBe('white'); hidden(false); vi.advanceTimersByTime(TIMEOUT_PENALTY_MS);
+    expect(controller.store.state.turn).toBe('white'); expect(controller.timer.remaining.value).toBe(30000);
+  });
+  it('clears a pending choice when starting again or leaving', async () => {
+    controller.start({ ...DEFAULT_SETTINGS, mode: 'local' }); vi.advanceTimersByTime(30000);
+    await controller.home(); expect(controller.timeoutLoser.value).toBeNull();
+    controller.start({ ...DEFAULT_SETTINGS, mode: 'local' }); vi.advanceTimersByTime(30000);
+    controller.start(DEFAULT_SETTINGS); expect(controller.timeoutLoser.value).toBeNull(); expect(controller.timer.remaining.value).toBe(30000);
   });
 });
