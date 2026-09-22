@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { useGameController } from './composables/useGameController';
 import { otherCharacter, type Character, type Color } from '../shared/game/types';
 import SetupPanel from './components/game/SetupPanel.vue';
+import VictoryScene from './components/game/VictoryScene.vue';
 import MoveImpact from './components/game/MoveImpact.vue';
 import TimeoutChoiceScene from './components/game/TimeoutChoiceScene.vue';
 import TimeoutPenalty from './components/game/TimeoutPenalty.vue';
@@ -21,7 +22,10 @@ const bottom = computed<Color>(() => myColor.value);
 const top = computed<Color>(() => bottom.value === 'black' ? 'white' : 'black');
 const modeName = computed(() => ({ ai: '혼자 놀기', local: '함께 놀기', online: '온라인 대전' })[store.settings.mode]);
 const percentBlack = computed(() => store.counts.black / (64 - store.counts.empty) * 100);
-const resultVisible = computed(() => screen.value === 'game' && !game.impact.busy.value && store.state.result && !resultDismissed.value && !modal.value);
+const victoryPlayed = ref(false);
+const victoryPending = computed(() => screen.value === 'game' && Boolean(store.state.result?.winner) && !victoryPlayed.value);
+watch(() => `${store.state.gameId}:${Boolean(store.state.result)}`, () => { victoryPlayed.value = false; }, { flush: 'sync' });
+const resultVisible = computed(() => screen.value === 'game' && !game.impact.busy.value && !victoryPending.value && store.state.result && !resultDismissed.value && !modal.value);
 watch(() => store.state.result, () => { resultDismissed.value = false; });
 function character(color: Color): Character { return color === 'black' ? store.settings.blackCharacter : otherCharacter(store.settings.blackCharacter); }
 function label(color: Color): string {
@@ -64,6 +68,7 @@ function confirm(): void {
       </section>
     </main>
     <footer class="site-footer"><span>작은 보드 위, 우리의 느긋한 승부.</span><span class="footer-mark"><AppIcon name="leaf" />MADE FOR A LITTLE BREAK</span></footer>
+    <VictoryScene :winner="character(store.state.result!.winner!)" v-if="victoryPending && !game.impact.busy.value && !modal" @done="victoryPlayed = true" @hit="audio.sfx('bonk')" />
     <ModalDialog v-if="game.timeoutLoser.value && game.canDecideTimeout.value" :dismissible="false" title="한 번만 봐줄까?">
       <TimeoutChoiceScene :recipient="character(game.timeoutLoser.value)" />
       <p class="confirm-text">{{ game.name(game.timeoutLoser.value) }}가 조금 오래 고민했네요.<br>{{ game.name(game.timeoutDecider.value!) }}, 이번엔 어떻게 할까요?</p>

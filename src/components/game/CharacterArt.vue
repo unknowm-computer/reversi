@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import type { Character, Reaction } from '../../../shared/game/types';
-interface Props { character: Character; mood?: Reaction; decorative?: boolean; portrait?: boolean; pose?: 'normal' | 'plead' | 'consider' }
-withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: false, pose: 'normal' });
+interface Props { character: Character; mood?: Reaction; decorative?: boolean; portrait?: boolean; still?: boolean; swing?: boolean; lariat?: boolean; toast?: boolean; pose?: 'normal' | 'plead' | 'consider' }
+withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: false, still: false, swing: false, lariat: false, toast: false, pose: 'normal' });
 </script>
 <template>
-  <svg class="character" :class="[character, `mood-${mood}`, `pose-${pose}`, { portrait }]" :viewBox="portrait ? (character === 'jannabi' ? '26 0 168 168' : '33 0 148 148') : '0 0 220 230'" :aria-hidden="decorative" :role="decorative ? undefined : 'img'" :aria-label="decorative ? undefined : character === 'jannabi' ? '장난꾸러기 잔나비' : portrait ? '느긋한 베짱이' : '바이올린을 연주하는 베짱이'">
+  <svg class="character" :class="[character, `mood-${mood}`, `pose-${pose}`, { portrait, still, swing, lariat }]" :viewBox="portrait ? (character === 'jannabi' ? '26 0 168 168' : '33 0 148 148') : '0 0 220 230'" :aria-hidden="decorative" :role="decorative ? undefined : 'img'" :aria-label="decorative ? undefined : character === 'jannabi' ? '장난꾸러기 잔나비' : portrait ? '느긋한 베짱이' : '바이올린을 연주하는 베짱이'">
     <ellipse v-if="!portrait" cx="110" cy="210" rx="65" ry="9" fill="#203d2d" opacity=".1" />
     <g class="body">
       <g v-if="pose !== 'normal'" class="pose-limbs" stroke-linecap="round" stroke-linejoin="round">
@@ -32,9 +32,14 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
         <path d="M82 159 64 201q9 15 25 4l20-36m21-7 14 42q14 12 26-2l-16-48" fill="#946443" stroke="#664832" stroke-width="3" />
         <path d="M79 116q-23 41 6 67 29 13 61-5 23-34-9-64" fill="#a8764e" stroke="#664832" stroke-width="3" />
         <ellipse cx="112" cy="150" rx="28" ry="33" fill="#ecd2a5" />
-        <path class="left-arm" d="M82 126q-32 0-40 30-7 14 5 18 13 4 16-12l27-17" fill="#a8764e" stroke="#664832" stroke-width="3" stroke-linejoin="round" />
-        <g class="right-arm"><path d="M141 125q21 17 32 5l14-25q8-10 15-2 6 5 0 16l-18 30q-22 22-48 1" fill="#a8764e" stroke="#664832" stroke-width="3" />
+        <path v-if="!lariat" class="left-arm" d="M82 126q-32 0-40 30-7 14 5 18 13 4 16-12l27-17" fill="#a8764e" stroke="#664832" stroke-width="3" stroke-linejoin="round" />
+        <g v-if="!lariat && !toast" class="right-arm"><path d="M141 125q21 17 32 5l14-25q8-10 15-2 6 5 0 16l-18 30q-22 22-48 1" fill="#a8764e" stroke="#664832" stroke-width="3" />
           <path d="M184 90q-6 24 16 31 11-23 0-44-1 27-16 13" fill="#e8bf51" stroke="#98722b" stroke-width="2" />
+        </g>
+        <g v-if="lariat" class="lariat-arms" fill="#a8764e" stroke="#664832" stroke-width="3" stroke-linejoin="round">
+          <path d="M83 122 22 119q-17-5-20 7-2 12 18 13l64 4Z"/>
+          <path d="m139 122 59-3q17-5 20 7 2 12-18 13l-62 4Z"/>
+          <path d="m8 128 12 2m180 0 12-2" fill="none" stroke-linecap="round"/>
         </g>
         <g class="head">
           <circle cx="58" cy="78" r="24" fill="#a8764e" stroke="#664832" stroke-width="3"/><circle cx="161" cy="78" r="24" fill="#a8764e" stroke="#664832" stroke-width="3"/>
@@ -43,11 +48,20 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
           <path d="M80 103q-18-43 6-46 15-4 24 10 8-15 26-10 20 8 6 45 16 21-30 23-45 0-32-22" fill="#f1d9b0"/>
           <path d="m99 33 2-16 12 15 12-12 2 15" fill="#a8764e" stroke="#664832" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
           <g class="eyes"><ellipse cx="92" cy="82" rx="4" ry="7" fill="#352f28"/><ellipse cx="129" cy="82" rx="4" ry="7" fill="#352f28"/></g>
-          <path v-if="pose === 'plead'" d="M98 109q12-6 24 0" fill="none" stroke="#664832" stroke-width="3" stroke-linecap="round"/>
+          <g v-if="still && mood === 'win'" class="big-smile"><path d="M82 83q10-15 20 0m17 0q10-15 20 0" fill="none" stroke="#664832" stroke-width="4" stroke-linecap="round"/><path d="M87 105q24 39 49-3Z" fill="#743f32" stroke="#664832" stroke-width="3"/><path d="M95 108q15 6 31-1" stroke="#fff8df" stroke-width="7"/></g>
+          <path v-else-if="pose === 'plead'" d="M98 109q12-6 24 0" fill="none" stroke="#664832" stroke-width="3" stroke-linecap="round"/>
           <g v-else-if="mood === 'sly'" class="sly-face"><path d="m82 69 20 8m18 0 20-9" fill="none" stroke="#664832" stroke-width="5" stroke-linecap="round"/><path d="M87 103q25 32 50-7-28 15-50 7" fill="#fff8df" stroke="#664832" stroke-width="3"/><path d="m107 110 1 7m11-10 2 6" stroke="#664832" stroke-width="2"/></g>
           <path v-else-if="['sad','lose','urgent'].includes(mood)" d="M94 113q17-18 33 0" fill="none" stroke="#664832" stroke-width="3" stroke-linecap="round"/>
           <path v-else d="M91 105q21 24 42-3" fill="#fff8df" stroke="#664832" stroke-width="3" stroke-linejoin="round"/>
           <ellipse cx="110" cy="99" rx="7" ry="4" fill="#8e6249"/><circle cx="78" cy="99" r="7" fill="#ce8b67" opacity=".6"/><circle cx="145" cy="98" r="7" fill="#ce8b67" opacity=".6"/>
+        </g>
+        <g v-if="toast" class="beer-toast" stroke-linejoin="round">
+          <path d="M141 145q21 11 21-17" fill="none" stroke="#664832" stroke-width="12" stroke-linecap="round"/>
+          <path d="M163 112h11q10 1 8 14-1 9-17 8" fill="none" stroke="#88612f" stroke-width="5"/>
+          <path d="M136 107h31l-2 38q-13 7-27-1Z" fill="#edb842" stroke="#88612f" stroke-width="3"/>
+          <path d="m144 119 1 19m11-20-1 20" stroke="#ffdf79" stroke-width="4" stroke-linecap="round"/>
+          <path d="M134 109q-5-11 5-14 5-8 13-2 13-6 16 4 10 5 2 14l-36-2Z" fill="#fff9e7" stroke="#d9c99f" stroke-width="2"/>
+          <path d="M163 129q10-3 8 7-1 7-10 5" fill="#ddb48b" stroke="#664832" stroke-width="3"/>
         </g>
       </template>
       <template v-else>
@@ -60,7 +74,8 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
           <path d="M59 76q-5-34 39-40 60-9 70 34 11 40-43 52-57 10-66-46" fill="#aabc77" stroke="#496341" stroke-width="3"/>
           <ellipse cx="89" cy="67" rx="16" ry="19" fill="#f6f2d5"/><ellipse cx="136" cy="65" rx="16" ry="19" fill="#f6f2d5"/>
           <g class="eyes"><ellipse cx="94" cy="71" rx="4" ry="7" fill="#304634"/><ellipse cx="140" cy="69" rx="4" ry="7" fill="#304634"/></g>
-          <path v-if="pose === 'plead'" d="M101 101q12-6 23 0" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round"/>
+          <g v-if="still && mood === 'win'" class="big-smile"><path d="M82 73q11-16 22 0m25-2q11-16 22 0" fill="none" stroke="#496341" stroke-width="4" stroke-linecap="round"/><path d="M94 96q21 38 43-5Z" fill="#654633" stroke="#496341" stroke-width="3"/><path d="M102 99q13 3 26-2" stroke="#fff8df" stroke-width="6"/></g>
+          <path v-else-if="pose === 'plead'" d="M101 101q12-6 23 0" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round"/>
           <g v-else-if="mood === 'whistle'"><path d="M96 96q10 14 22 1" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round"/><ellipse cx="127" cy="97" rx="5" ry="4" fill="#496341"/><text class="whistle-note" x="159" y="75" fill="#496341" font-size="28">♪</text></g>
           <path v-else-if="['sad','lose','urgent'].includes(mood)" d="M98 104q15-13 28-2" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round"/>
           <path v-else d="M96 96q17 17 35-3" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round"/>
@@ -68,9 +83,19 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
           <path d="m80 45 10-4m38-4 12 4" stroke="#496341" stroke-width="3" stroke-linecap="round"/>
         </g>
         <path d="m89 118 16 4 16-5-4 13-15-3-15 5Z" fill="#c48343" stroke="#936036" stroke-width="2"/>
-        <g class="violin" transform="rotate(-25 115 154)"><path d="M106 125q-18 2-14 18 8 5 0 12-8 26 19 31 27-5 19-27-13-6-3-17 0-18-21-17" fill="#b97942" stroke="#694931" stroke-width="3"/><path d="M108 134v-29h8v31m-4 5v37" fill="none" stroke="#493e2d" stroke-width="4"/><path d="m98 166 2-10m22 10-2-10" stroke="#694931" stroke-width="3" stroke-linecap="round"/></g>
-        <path d="M76 124q-25 20 5 34l27-9" fill="none" stroke="#496341" stroke-width="9" stroke-linecap="round"/>
-        <g class="right-arm"><path d="M145 127q30 13 14 30l-21 4" fill="none" stroke="#496341" stroke-width="9" stroke-linecap="round"/><path d="m96 133 75 44" stroke="#6d5437" stroke-width="4" stroke-linecap="round"/><path d="m96 138 72 43" stroke="#ead8a7" stroke-width="2"/></g>
+        <g v-if="!swing" class="violin" transform="rotate(-25 115 154)"><path d="M106 125q-18 2-14 18 8 5 0 12-8 26 19 31 27-5 19-27-13-6-3-17 0-18-21-17" fill="#b97942" stroke="#694931" stroke-width="3"/><path d="M108 134v-29h8v31m-4 5v37" fill="none" stroke="#493e2d" stroke-width="4"/><path d="m98 166 2-10m22 10-2-10" stroke="#694931" stroke-width="3" stroke-linecap="round"/></g>
+        <path v-if="!swing" d="M76 124q-25 20 5 34l27-9" fill="none" stroke="#496341" stroke-width="9" stroke-linecap="round"/>
+        <g v-if="!swing" class="right-arm"><path d="M145 127q30 13 14 30l-21 4" fill="none" stroke="#496341" stroke-width="9" stroke-linecap="round"/><path d="m96 133 75 44" stroke="#6d5437" stroke-width="4" stroke-linecap="round"/><path d="m96 138 72 43" stroke="#ead8a7" stroke-width="2"/></g>
+        <path v-if="swing" d="M78 125q-15 22 11 32" fill="none" stroke="#496341" stroke-width="9" stroke-linecap="round"/>
+        <g v-if="swing" class="victory-swing">
+          <path d="M143 127q18 9 28-12" fill="none" stroke="#496341" stroke-width="11" stroke-linecap="round"/>
+          <g transform="translate(170 115) rotate(20)">
+            <path d="M-4 0v-31h8V0" fill="#68482f" stroke="#493e2d" stroke-width="3"/>
+            <path d="M0-85q-24 0-20 20 10 8 0 15-13 25 20 27 33-2 20-27-10-7 0-15 4-20-20-20Z" fill="#b97942" stroke="#694931" stroke-width="4"/>
+            <path d="M0-78v71m-12-49 2 10m22-10-2 10" stroke="#ead8a7" stroke-width="2"/>
+          </g>
+          <circle cx="169" cy="114" r="7" fill="#aabc77" stroke="#496341" stroke-width="3"/>
+        </g>
       </template>
     </g>
     <g v-if="['happy','dance','win'].includes(mood)" fill="#c99a47" class="sparkles"><path d="m27 43 3 8 8 3-8 3-3 8-3-8-8-3 8-3Zm161 14 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z"/></g>
@@ -99,6 +124,11 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
   .pose-plead .head { animation: none; transform: translateY(22px) scale(.88); }
   .pose-consider .head, .clasped-hands { animation: none; }
 }
+.still.mood-win .eyes { display: none; }
+.lariat .body { animation: none; }
+.swing .body { animation: none; }
+.victory-swing { transform-origin: 143px 127px; animation: violin-strike 3.2s both; }
+@keyframes violin-strike { 0% { transform: rotate(15deg); } 24%, 34% { transform: rotate(-100deg); } 42%, 52% { transform: rotate(100deg); } 70%, 100% { transform: rotate(15deg); } }
 .portrait .body { transform-origin: 110px 80px; }
 .mood-sly .head { animation: chuckle .22s ease-in-out infinite alternate; }
 .mood-sly .eyes { transform: scaleY(.6); transform-origin: 110px 82px; }
@@ -124,4 +154,5 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
 @keyframes ponder { to { transform: rotate(-8deg); } }
 @keyframes tremble { to { transform: translateX(2px) rotate(1deg); } }
 @keyframes shrug { to { transform: translateY(-6px) scaleY(.97); } }
+.character.still .body, .character.still .head, .character.still .right-arm, .character.still .sparkles { animation: none; transform: none; }
 </style>
