@@ -15,12 +15,15 @@ interface Props {
   showActions?: boolean;
   canUndo?: boolean;
   canResign?: boolean;
+  showHint?: boolean;
+  canHint?: boolean;
+  hintBusy?: boolean;
 }
-withDefaults(defineProps<Props>(), { showActions: false, canUndo: false, canResign: false });
-const emit = defineEmits<{ (event: 'undo'): void; (event: 'resign'): void }>();
+withDefaults(defineProps<Props>(), { showActions: false, canUndo: false, canResign: false, showHint: false, canHint: false, hintBusy: false });
+const emit = defineEmits<{ (event: 'undo'): void; (event: 'resign'): void; (event: 'hint'): void }>();
 </script>
 <template>
-  <section class="player-panel" :class="{ active, 'with-actions': showActions }" :aria-label="`${characterName(character)} ${color === 'black' ? '흑' : '백'}, ${count}개`">
+  <section class="player-panel" :class="{ active, 'with-actions': showActions, 'with-hint': showActions && showHint }" :aria-label="`${characterName(character)} ${color === 'black' ? '흑' : '백'}, ${count}개`">
     <div class="avatar">
       <div class="portrait"><CharacterArt :character="character" :mood="mood" portrait /></div>
       <span v-if="active" class="turn-indicator" role="img" :aria-label="`${characterName(character)} · ${color === 'black' ? '흑' : '백'}의 차례`" title="현재 차례"><AppIcon name="turn" /></span>
@@ -32,6 +35,7 @@ const emit = defineEmits<{ (event: 'undo'): void; (event: 'resign'): void }>();
     </div>
     <div class="score"><strong>{{ String(count).padStart(2, '0') }}</strong><span>개의 돌</span></div>
     <div v-if="showActions" class="player-actions">
+      <button v-if="showHint" class="secondary hint-action" :disabled="!canHint || hintBusy" :aria-busy="hintBusy" :aria-label="hintBusy ? '힌트를 찾는 중' : '힌트 보기 (무제한)'" title="추천할 칸 보기 · 무제한" @click="emit('hint')"><AppIcon name="hint" />힌트</button>
       <button class="secondary" :disabled="!canUndo" :aria-label="`한 수 무르기 (${undoCount === '∞' ? '무제한' : `${undoCount}회 남음`})`" @click="emit('undo')"><AppIcon name="undo" />한 수 무르기 ({{ undoCount }})</button>
       <button class="secondary resign-action" :disabled="!canResign" @click="emit('resign')"><AppIcon name="flag" />기권하기</button>
     </div>
@@ -78,7 +82,14 @@ const emit = defineEmits<{ (event: 'undo'): void; (event: 'resign'): void }>();
 .player-actions button:hover:not(:disabled) { border-color: var(--text-accent); background: var(--paper); }
 .player-actions .resign-action { color: var(--danger); background: var(--danger-soft); border-color: var(--danger-line); font-weight: 500; }
 .player-actions .resign-action:hover:not(:disabled) { border-color: var(--danger); background: var(--danger-soft); }
+.with-hint .score { grid-row: 1; }
+.with-hint .player-actions { grid-column-end: -1; gap: var(--space-1); }
+.with-hint .player-actions button { padding-inline: calc(var(--space-1) * 1.5); }
+.player-actions .hint-action { color: var(--hint-ink); border-color: var(--hint-gold); background: var(--hint-soft); }
+.player-actions .hint-action:hover:not(:disabled) { border-color: var(--hint-ink); background: var(--hint-soft); }
+.hint-action[aria-busy="true"] svg { animation: hint-thinking .7s ease-in-out infinite alternate; }
 .player-actions svg { width: 13px; height: 13px; flex-shrink: 0; }
+@keyframes hint-thinking { to { opacity: .35; } }
 @media (max-width: $mobile) {
   .player-panel { grid-template-rows: 65px 36px; column-gap: var(--space-2); padding: var(--space-3); }
   .avatar { width: 65px; height: 65px; }

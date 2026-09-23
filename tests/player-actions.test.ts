@@ -9,7 +9,7 @@ import PlayerPanel from '../src/components/game/PlayerPanel.vue';
 import SetupPanel from '../src/components/game/SetupPanel.vue';
 import { useGameStore } from '../src/stores/game';
 import { opposite } from '../shared/game/rules';
-import { DEFAULT_SETTINGS, TIMEOUT_PENALTY_MS, type Cell, type Color, type GameSettings } from '../shared/game/types';
+import { DEFAULT_SETTINGS, TIMEOUT_PENALTY_MS, type Cell, type Color, type GameSettings, type GameState } from '../shared/game/types';
 
 let wrapper: VueWrapper | undefined;
 let store: ReturnType<typeof useGameStore>;
@@ -64,13 +64,44 @@ afterEach(() => {
 });
 
 describe('Turn-based player actions', () => {
+  it('shows unlimited solo hints on the board without placing a stone, then clears the hint on a move', async () => {
+    let hintWorker: HintWorker | undefined;
+    class HintWorker {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      request: GameState | null = null;
+      constructor() { hintWorker = this; }
+      postMessage(state: GameState): void { this.request = state; }
+      terminate(): void {}
+    }
+    vi.stubGlobal('Worker', HintWorker);
+    await start({ mode: 'ai' });
+    const before = JSON.stringify(store.state);
+    await action('black', '힌트').trigger('click');
+    expect(action('black', '힌트').element.disabled).toBe(true);
+    hintWorker!.onmessage?.({ data: { gameId: hintWorker!.request!.gameId, revision: 0, index: 19 } } as MessageEvent);
+    await nextTick();
+    expect(wrapper!.get('[data-cell="19"]').attributes('aria-label')).toContain('힌트 추천');
+    expect(wrapper!.findAll('.suggestion-marker')).toHaveLength(1);
+    expect(JSON.stringify(store.state)).toBe(before);
+    for (let i = 0; i < 5; i++) {
+      expect(action('black', '힌트').element.disabled).toBe(false);
+      await action('black', '힌트').trigger('click');
+    }
+    expect(wrapper!.findAll('.suggestion-marker')).toHaveLength(1);
+    await move(19);
+    expect(wrapper!.find('.suggestion-marker').exists()).toBe(false);
+    expect(wrapper!.find('.hint-action').exists()).toBe(false);
+  });
+
   it.each(['ai', 'local'] as const)('asks for a timeout decision at zero in %s', async mode => {
     await start({ mode, seconds: 30 });
     vi.advanceTimersByTime(30000); await nextTick();
     expect(wrapper!.getComponent(ModalDialog).props('dismissible')).toBe(false);
-    expect(wrapper!.getComponent(ModalDialog).text()).toContain('시간 초과! 한 번 봐줄까요?');
+    expect(wrapper!.getComponent(ModalDialog).text()).toContain(mode === 'ai' ? '시간 초과… 한 번만 봐주세요!' : '시간 초과! 한 번 봐줄까요?');
     expect(store.state.result).toBeNull();
-    await dialogAction('봐준다').trigger('click');
+    if (mode === 'ai') expect(action('black', '힌트').element.disabled).toBe(true);
+    expect(dialogAction(mode === 'ai' ? '패배를 인정한다' : '게임 종료').exists()).toBe(true);
+    await dialogAction(mode === 'ai' ? '제발 봐주세요' : '봐준다').trigger('click');
     vi.advanceTimersByTime(TIMEOUT_PENALTY_MS); await nextTick();
     expect(wrapper!.findComponent(ModalDialog).exists()).toBe(false);
     expect(wrapper!.get('.timer').attributes('aria-label')).toBe('남은 시간 30초');
@@ -115,6 +146,7 @@ describe('Turn-based player actions', () => {
 
   it('shows controls only on the current local player and spends their own undo chance', async () => {
     await start({ undoLimit: 3 });
+    expect(wrapper!.find('.hint-action').exists()).toBe(false);
     const initialBoard = [...store.state.board];
     expect(action('black', '한 수 무르기').element.disabled).toBe(true);
     expect(action('black', '한 수 무르기').text()).toContain('(3)');
@@ -148,6 +180,7 @@ describe('Turn-based player actions', () => {
 
   it('never exposes opponent actions online and keeps online undo disabled', async () => {
     await start({ mode: 'online' });
+    expect(wrapper!.find('.hint-action').exists()).toBe(false);
     expect(action('black', '한 수 무르기').text()).toContain('(0)');
     expect(action('black', '한 수 무르기').element.disabled).toBe(true);
     store.move(19, 0);

@@ -42,7 +42,7 @@ export function useGameAudio() {
       if (context.state === 'suspended') await context.resume();
     } catch { /* Sound must never block gameplay when the browser denies audio. */ }
   }
-  function sfx(kind: 'move' | 'pass' | 'reverse' | 'capture' | 'undo' | 'end' | 'tick' | 'urgent' | 'countdown' | 'timeout' | 'button' | 'bonk' | 'laugh' | 'whistle', count = 0): void {
+  function sfx(kind: 'move' | 'pass' | 'reverse' | 'capture' | 'undo' | 'end' | 'tick' | 'urgent' | 'countdown' | 'timeout' | 'button' | 'bonk' | 'taunt' | 'laugh' | 'whistle', count = 0): void {
     if (!enabled.value || !context || !master || context.state !== 'running' || document.hidden) return;
     if (kind === 'timeout') {
       tone(1320, context.currentTime, .22, .12, master, 'square');
@@ -52,6 +52,13 @@ export function useGameAudio() {
       // Alternate two short, percussive pitches for a clock-like tick-tock.
       tone(count % 2 === 0 ? 1900 : 1400, context.currentTime, .045, .09, master, 'triangle');
       tone(180, context.currentTime, .025, .035, master);
+      return;
+    }
+    if (kind === 'taunt') {
+      // A short, cheeky sing-song phrase accompanies the face, without a hit sound.
+      [659, 554, 659, 554, 440].forEach((note, index) => {
+        tone(note, context!.currentTime + index * .13, index === 4 ? .26 : .13, .09, master!, 'triangle');
+      });
       return;
     }
     if (kind === 'laugh' || kind === 'whistle') {

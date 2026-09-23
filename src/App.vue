@@ -23,6 +23,7 @@ watch(game.timeoutLoser, loser => { if (loser) modal.value = null; });
 const bottom = computed<Color>(() => myColor.value);
 const top = computed<Color>(() => bottom.value === 'black' ? 'white' : 'black');
 const isLocal = computed<boolean>(() => store.settings.mode === 'local');
+const isAskingMercy = computed<boolean>(() => store.settings.mode === 'ai' && game.timeoutLoser.value === myColor.value);
 const canResign = computed<boolean>(() => !store.state.result && !game.timeoutPending.value);
 const modeName = computed(() => ({ ai: '혼자 놀기', local: '함께 놀기', online: '온라인 대전' })[store.settings.mode]);
 const percentBlack = computed(() => store.counts.black / (64 - store.counts.empty) * 100);
@@ -73,12 +74,14 @@ function confirm(): void {
           />
           <p class="sr-only" role="status" aria-live="polite">{{ status }}</p>
           <p v-if="game.connectionNotice.value" class="connection-notice" role="alert">{{ game.connectionNotice.value }}</p>
-          <div class="board-stage"><GameBoard :board="game.impact.displayed.value.board" :legal="game.impact.busy.value ? [] : available" :turn="store.state.turn" :interactive="canMove && !modal && !resultVisible" :last-move="store.state.lastMove" :flipped="game.impact.displayed.value.flipped" :revision="store.state.revision" @move="game.move" /><MoveImpact v-if="game.impact.scene.value" :actor="character(game.impact.scene.value.actor)" :kind="game.impact.scene.value.kind" :count="game.impact.scene.value.count" /><TimeoutPenalty v-if="game.penalty.recipient.value" :recipient="character(game.penalty.recipient.value)" :paused="game.paused.value" /></div>
+          <div class="board-stage"><GameBoard :board="game.impact.displayed.value.board" :legal="game.impact.busy.value ? [] : available" :turn="store.state.turn" :interactive="canMove && !modal && !resultVisible" :hint-index="game.hint.index.value" :last-move="store.state.lastMove" :flipped="game.impact.displayed.value.flipped" :revision="store.state.revision" @move="game.move" /><MoveImpact v-if="game.impact.scene.value" :actor="character(game.impact.scene.value.actor)" :kind="game.impact.scene.value.kind" :count="game.impact.scene.value.count" /><TimeoutPenalty v-if="game.penalty.recipient.value" :recipient="character(game.penalty.recipient.value)" :paused="game.paused.value" :elapsed="game.penalty.elapsed.value" /></div>
           <PlayerPanel
             :character="character(bottom)" :color="bottom" :count="store.counts[bottom]" :active="!store.state.result && store.state.turn === bottom"
             :mood="game.mood(bottom)" :remaining="timer.remaining.value" :seconds="store.settings.seconds" :undo-count="undoCount(bottom)"
             :show-actions="showActions(bottom)" :can-undo="canUndoFor(bottom)" :can-resign="canResign" @undo="undoFor(bottom)" @resign="requestResign(bottom)"
+            :show-hint="store.settings.mode === 'ai'" :can-hint="game.canHint.value" :hint-busy="game.hint.busy.value" @hint="game.hint.request"
           />
+          <p v-if="game.hint.error.value" class="game-error" role="alert">{{ game.hint.error.value }}</p>
           <div v-if="store.state.result" class="game-controls">
             <button class="text-button" @click="resultDismissed = false">결과 보기<AppIcon name="arrow" /></button>
           </div>
@@ -89,11 +92,17 @@ function confirm(): void {
     </main>
     <footer class="site-footer"><span>작은 보드 위, 우리의 느긋한 승부.</span><span class="footer-mark"><AppIcon name="leaf" />MADE FOR A LITTLE BREAK</span></footer>
     <VictoryScene :winner="character(store.state.result!.winner!)" v-if="victoryPending && !game.impact.busy.value && !modal" @done="victoryPlayed = true" @hit="audio.sfx('bonk')" />
-    <ModalDialog v-if="game.timeoutLoser.value && game.canDecideTimeout.value" :dismissible="false" title="시간 초과! 한 번 봐줄까요?">
-      <TimeoutChoiceScene :recipient="character(game.timeoutLoser.value)" />
-      <p class="confirm-text">{{ game.name(game.timeoutLoser.value) }}의 시간이 다 됐어요.<br>{{ store.settings.mode === 'ai' ? '이번 한 수는 봐주고 계속할까요?' : `${game.name(game.timeoutDecider.value!)}, 이번엔 어떻게 할까요?` }}</p>
-      <p class="confirm-text">봐주면 꿀밤 한 대 후 같은 차례에서 {{ store.settings.seconds }}초를 새로 드려요. 게임 종료를 선택하면 {{ game.name(game.timeoutDecider.value!) }}의 승리예요.</p>
-      <div class="confirm-actions"><button class="secondary" :disabled="game.decisionBlocked.value" @click="game.chooseTimeout('forgive')">봐준다</button><button class="primary" :disabled="game.decisionBlocked.value" @click="game.chooseTimeout('end')">게임 종료</button></div>
+    <ModalDialog v-if="game.timeoutLoser.value && game.canDecideTimeout.value" :dismissible="false" :title="isAskingMercy ? '시간 초과… 한 번만 봐주세요!' : '시간 초과! 한 번 봐줄까요?'">
+      <TimeoutChoiceScene :recipient="character(game.timeoutLoser.value)" :begging="isAskingMercy" />
+      <template v-if="isAskingMercy">
+        <p class="confirm-text">자, 잠깐만요… 생각하다 보니 시간이 다 됐네요.<br>제가 잘못했어요. 제발 이번 한 번만 봐주세요!</p>
+        <p class="confirm-text">꿀밤 한 대는 달게 받을게요. {{ store.settings.seconds }}초만 더 주시면 안 될까요…?<br>더는 부탁하지 않으려면 패배를 인정하고 이번 판을 마칠 수 있어요.</p>
+      </template>
+      <template v-else>
+        <p class="confirm-text">{{ game.name(game.timeoutLoser.value) }}의 시간이 다 됐어요.<br>{{ game.name(game.timeoutDecider.value!) }}, 이번엔 어떻게 할까요?</p>
+        <p class="confirm-text">봐주면 꿀밤 한 대 후 같은 차례에서 {{ store.settings.seconds }}초를 새로 드려요. 게임 종료를 선택하면 {{ game.name(game.timeoutDecider.value!) }}의 승리예요.</p>
+      </template>
+      <div class="confirm-actions"><button class="secondary" :disabled="game.decisionBlocked.value" @click="game.chooseTimeout('forgive')">{{ isAskingMercy ? '제발 봐주세요' : '봐준다' }}</button><button class="primary" :disabled="game.decisionBlocked.value" @click="game.chooseTimeout('end')">{{ isAskingMercy ? '패배를 인정한다' : '게임 종료' }}</button></div>
       <p v-if="store.settings.mode === 'online' && online.error.value" class="game-error" role="alert">{{ online.error.value }}</p>
       <p v-if="game.decisionBlocked.value" class="confirm-text">연결과 요청 처리를 기다리고 있어요.</p>
     </ModalDialog>

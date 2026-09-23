@@ -6,13 +6,14 @@ import { useGameAudio } from './useGameAudio';
 import { useCharacterReaction } from './useCharacterReaction';
 import { useMoveImpact, IMPACT_MS } from './useMoveImpact';
 import { useTimeoutPenalty } from './useTimeoutPenalty';
+import { useGameHint } from './useGameHint';
 import { legalMoves, opposite } from '../../shared/game/rules';
 import { characterName, otherCharacter, TURN_WARNING_MS, type Color, type GameSettings, type GameState, type Reaction } from '../../shared/game/types';
 export function useGameController() {
   const store = useGameStore();
   const screen = ref<'setup' | 'lobby' | 'game'>('setup');
   const audio = useGameAudio(), reaction = useCharacterReaction();
-  const impact = useMoveImpact(() => store.state, () => audio.sfx('bonk'));
+  const impact = useMoveImpact(() => store.state, () => audio.sfx('taunt'));
   const paused = ref(document.hidden), thinking = ref(false), animating = ref(false);
   const clock = ref(Date.now());
   const localTimeout = ref<Color | null>(null);
@@ -26,7 +27,7 @@ export function useGameController() {
     if (store.settings.mode === 'online') return;
     timer.start(store.settings.seconds * 1000);
     startAi();
-  });
+  }, () => audio.sfx('bonk'));
   const timer = useTurnTimer(() => {
     cancelWork(); timer.stop(); reaction.reset(); pendingTurn = false;
     localTimeout.value = store.state.turn;
@@ -40,14 +41,15 @@ export function useGameController() {
       if (changed) {
         warnedHalf = false; lastCountdownSecond = null;
         if (room.game.revision > 0 && before.gameId === room.game.gameId && (room.game.flipped.length || room.game.result)) {
-          reaction.transition(before, room.game, store.settings.blackCharacter); audio.sfx(reaction.event.value, room.game.flipped.length);
+          reaction.transition(before, room.game, store.settings.blackCharacter);
+          if (!impact.scene.value || reaction.event.value === 'end') audio.sfx(reaction.event.value, room.game.flipped.length);
         } else reaction.reset();
       }
       if (room.timeout?.phase === 'penalty') {
         const key = `${room.game.gameId}:${room.timeout.resumesAt}`;
         if (remotePenaltyKey !== key) {
           remotePenaltyKey = key; cancelWork(); reaction.reset();
-          penalty.begin(room.timeout.loser, room.timeout.resumesAt - room.serverNow); audio.sfx('bonk');
+          penalty.begin(room.timeout.loser, room.timeout.resumesAt - room.serverNow);
         }
       } else { remotePenaltyKey = null; penalty.cancel(); }
       timer.sync(room.deadline, room.serverNow);
@@ -65,9 +67,11 @@ export function useGameController() {
   const canDecideTimeout = computed(() => timeoutDecider.value !== null && (store.settings.mode !== 'online' || timeoutDecider.value === myColor.value));
   const decisionBlocked = computed(() => Boolean(disconnected.value || online.busy.value || paused.value));
   const canMove = computed(() => screen.value === 'game' && !timeoutPending.value && !store.state.result && !penalty.recipient.value && !impact.busy.value && !animating.value && !thinking.value && !paused.value && !disconnected.value && !online.busy.value && (store.settings.mode !== 'online' || store.state.turn === myColor.value));
+  const canHint = computed<boolean>(() => store.settings.mode === 'ai' && store.state.turn === 'black' && canMove.value);
+  const hint = useGameHint(() => store.state, canHint);
   function name(color: Color): string { return characterName(color === 'black' ? store.settings.blackCharacter : otherCharacter(store.settings.blackCharacter)); }
   const status = computed(() => {
-    if (impact.scene.value) return `한 수에 ${impact.scene.value.count}개! 강력한 한 방!`;
+    if (impact.scene.value) return `한 수에 ${impact.scene.value.count}개! 메롱~ 잡아 봐!`;
     if (store.state.result) return store.state.result.winner ? `${name(store.state.result.winner)}의 승리!` : '사이좋게 무승부!';
     if (connectionNotice.value) return connectionNotice.value;
     if (paused.value) return '잠시 쉬어가는 중';
@@ -115,7 +119,8 @@ export function useGameController() {
     const before = store.state;
     if (!store.move(index, timer.remaining.value)) return;
     timer.stop(); warnedHalf = false; lastCountdownSecond = null;
-    reaction.transition(before, store.state, store.settings.blackCharacter); audio.sfx(reaction.event.value, store.state.flipped.length);
+    reaction.transition(before, store.state, store.settings.blackCharacter);
+    if (!impact.scene.value || reaction.event.value === 'end') audio.sfx(reaction.event.value, store.state.flipped.length);
     if (store.state.result) { pendingTurn = false; return; }
     animating.value = true; pendingTurn = true;
     animationTimer = window.setTimeout(nextTurn, impact.busy.value ? IMPACT_MS + 460 + store.state.flipped.length * 14 : 460);
@@ -151,7 +156,7 @@ export function useGameController() {
     localTimeout.value = null;
     if (choice === 'end') { finish(loser, 'timeout'); return; }
     cancelWork(); timer.stop(); reaction.reset(); audio.reset();
-    penalty.begin(loser); audio.sfx('bonk');
+    penalty.begin(loser);
   }
   function finish(loser: Color, reason: 'resign' | 'timeout'): void {
     if (store.state.result || screen.value !== 'game') return;
@@ -196,5 +201,5 @@ export function useGameController() {
   }, { immediate: true });
   if (online.hasSession) online.connect();
   onUnmounted(() => { cancelWork(); window.clearInterval(pulse); document.removeEventListener('visibilitychange', visibility); });
-  return { store, screen, audio, online, timer, penalty, impact, status, connectionNotice, thinking, animating, paused, available, canMove, myColor, timeoutLoser, timeoutPending, timeoutDecider, canDecideTimeout, decisionBlocked, chooseTimeout, name, mood, move, start, undo, finish, home, rematch };
+  return { store, screen, audio, online, timer, penalty, impact, hint, canHint, status, connectionNotice, thinking, animating, paused, available, canMove, myColor, timeoutLoser, timeoutPending, timeoutDecider, canDecideTimeout, decisionBlocked, chooseTimeout, name, mood, move, start, undo, finish, home, rematch };
 }

@@ -4,8 +4,9 @@ import { defineComponent } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { createPinia } from 'pinia';
 import { useGameController } from '../src/composables/useGameController';
+import { IMPACT_MS } from '../src/composables/useMoveImpact';
 import { TIMEOUT_PENALTY_MS } from '../src/composables/useTimeoutPenalty';
-import { DEFAULT_SETTINGS, type GameState } from '../shared/game/types';
+import { DEFAULT_SETTINGS, TIMEOUT_PENALTY_HIT_MS, type GameState } from '../shared/game/types';
 class FakeWorker {
   static instances: FakeWorker[] = [];
   onmessage: ((event: MessageEvent<{ gameId: string; revision: number; index: number }>) => void) | null = null;
@@ -26,6 +27,35 @@ beforeEach(() => {
   wrapper = mount(defineComponent({ setup() { controller = useGameController(); return () => null; } }), { global: { plugins: [createPinia()] } });
 });
 afterEach(() => { wrapper?.unmount(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+describe('Solo hint integration', () => {
+  it('keeps the timer running and the opponent independent from unlimited hints', () => {
+    controller.start(DEFAULT_SETTINGS);
+    const initial = JSON.stringify(controller.store.state);
+    controller.hint.request();
+    vi.advanceTimersByTime(1000);
+    expect(controller.timer.remaining.value).toBe(29000);
+    expect(controller.canMove.value).toBe(true);
+    FakeWorker.instances[0].reply(19);
+    expect(controller.hint.index.value).toBe(19);
+    expect(JSON.stringify(controller.store.state)).toBe(initial);
+    controller.move(19);
+    expect(controller.hint.index.value).toBeNull();
+    expect(controller.canHint.value).toBe(false);
+    controller.hint.request();
+    vi.advanceTimersByTime(500);
+    expect(FakeWorker.instances).toHaveLength(2);
+    expect(FakeWorker.instances[1].request!.turn).toBe('white');
+    FakeWorker.instances[1].reply(18);
+    vi.advanceTimersByTime(500);
+    expect(controller.canHint.value).toBe(true);
+    controller.hint.request();
+    expect(FakeWorker.instances).toHaveLength(3);
+    controller.undo();
+    expect(FakeWorker.instances[2].terminated).toBe(true);
+    expect(controller.hint.index.value).toBeNull();
+    expect(controller.store.state.board).toEqual(JSON.parse(initial).board);
+  });
+});
 describe('Controller lifecycle', () => {
   it('celebrates corners on the player card without delaying the flip', () => {
     controller.start({ ...DEFAULT_SETTINGS, seconds: 30 });
@@ -51,14 +81,17 @@ describe('Controller lifecycle', () => {
     expect(controller.mood('black')).toBe('idle'); expect(controller.mood('white')).toBe('idle');
   });
 
-  it('holds AI and the next turn clock until the large capture impact and flips finish', () => {
+  it('plays one taunt and holds AI and the next turn clock until the face and flips finish', () => {
     controller.start({ ...DEFAULT_SETTINGS, seconds: 30 });
+    const sound = vi.spyOn(controller.audio, 'sfx');
     for (let i = 9; i <= 13; i++) controller.store.state.board[i] = 'white'; controller.store.state.board[14] = 'black';
     vi.advanceTimersByTime(1000); controller.move(8);
     expect(controller.impact.scene.value?.kind).toBe('capture'); expect(controller.canMove.value).toBe(false);
-    vi.advanceTimersByTime(700); expect(controller.impact.scene.value).toBeNull(); expect(FakeWorker.instances).toHaveLength(0);
+    expect(sound.mock.calls).toEqual([['taunt']]); expect(controller.status.value).toContain('메롱');
+    vi.advanceTimersByTime(IMPACT_MS); expect(controller.impact.scene.value).toBeNull(); expect(FakeWorker.instances).toHaveLength(0);
     expect(controller.timer.remaining.value).toBe(29000);
     vi.advanceTimersByTime(530); expect(FakeWorker.instances).toHaveLength(1); expect(controller.timer.remaining.value).toBe(30000);
+    expect(sound.mock.calls).toEqual([['taunt']]);
   });
 
   it('ignores rapid double input during flip animation', () => {
@@ -259,6 +292,20 @@ describe('Countdown warning sounds', () => {
 
 
 describe('Timeout beep and choice', () => {
+  it('plays the forgiveness impact sound at contact rather than when the choice is made', () => {
+    controller.start({ ...DEFAULT_SETTINGS, mode: 'local', seconds: 30 });
+    vi.advanceTimersByTime(30000);
+    const sound = vi.spyOn(controller.audio, 'sfx');
+    controller.chooseTimeout('forgive');
+    expect(sound).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(TIMEOUT_PENALTY_HIT_MS - 1);
+    expect(sound).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(sound.mock.calls).toEqual([['bonk']]);
+    vi.advanceTimersByTime(TIMEOUT_PENALTY_MS - TIMEOUT_PENALTY_HIT_MS);
+    expect(sound.mock.calls).toEqual([['bonk']]);
+  });
+
   it.each(['ai', 'local'] as const)('beeps once at zero in %s and once again after a new timeout', mode => {
     controller.start({ ...DEFAULT_SETTINGS, mode, seconds: 30 });
     const sound = vi.spyOn(controller.audio, 'sfx');

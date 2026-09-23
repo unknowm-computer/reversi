@@ -34,21 +34,40 @@ describe('special move impact', () => {
     expect(impactKind(before, { ...next, flipped: [] })).toBeNull();
     expect(impactKind(next, { ...next, revision: 2, result: { winner: 'black', reason: 'resign' } })).toBeNull();
   });
-  it('places the new stone first, keeps old colors until impact and waits for flips', () => {
-    const [before, next] = capture(19, 5); const state = ref(before); const hit = vi.fn(); let impact!: ReturnType<typeof useMoveImpact>;
-    wrapper = mount(defineComponent({ setup() { impact = useMoveImpact(() => state.value, hit); return () => null; } }));
+  it('starts the taunt once, places the new stone first and waits for the face and flips', () => {
+    const [before, next] = capture(19, 5); const state = ref(before); const start = vi.fn(); let impact!: ReturnType<typeof useMoveImpact>;
+    wrapper = mount(defineComponent({ setup() { impact = useMoveImpact(() => state.value, start); return () => null; } }));
     state.value = next;
     expect(impact.displayed.value.board[19]).toBe('black'); expect(impact.displayed.value.board[8]).toBe('white');
     expect(impact.scene.value?.actor).toBe('black'); expect(impact.busy.value).toBe(true);
-    vi.advanceTimersByTime(IMPACT_MS - 1); expect(hit).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1); expect(hit).toHaveBeenCalledOnce(); expect(impact.scene.value).toBeNull(); expect(impact.displayed.value.board[8]).toBe('black'); expect(impact.busy.value).toBe(true);
+    expect(start).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(IMPACT_MS - 1); expect(impact.scene.value?.kind).toBe('capture');
+    vi.advanceTimersByTime(1); expect(start).toHaveBeenCalledOnce(); expect(impact.scene.value).toBeNull(); expect(impact.displayed.value.board[8]).toBe('black'); expect(impact.busy.value).toBe(true);
     vi.advanceTimersByTime(530); expect(impact.busy.value).toBe(false);
   });
+  it('does not replay or extend the taunt for repeated online snapshots', () => {
+    const [before, next] = capture(19, 5); const state = ref(before); const start = vi.fn(); let impact!: ReturnType<typeof useMoveImpact>;
+    wrapper = mount(defineComponent({ setup() { impact = useMoveImpact(() => state.value, start); return () => null; } }));
+    state.value = next; vi.advanceTimersByTime(500);
+    state.value = { ...next, board: [...next.board] };
+    expect(start).toHaveBeenCalledOnce(); expect(impact.scene.value?.kind).toBe('capture');
+    vi.advanceTimersByTime(IMPACT_MS - 500);
+    expect(start).toHaveBeenCalledOnce(); expect(impact.scene.value).toBeNull();
+  });
+  it('keeps hidden moves silent and reveals their final board immediately', () => {
+    const [before, next] = capture(19, 5); const state = ref(before); const start = vi.fn(); let impact!: ReturnType<typeof useMoveImpact>;
+    wrapper = mount(defineComponent({ setup() { impact = useMoveImpact(() => state.value, start); return () => null; } }));
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true }); state.value = next;
+    expect(start).not.toHaveBeenCalled(); expect(impact.scene.value).toBeNull(); expect(impact.busy.value).toBe(false);
+    expect(impact.displayed.value.board[8]).toBe('black');
+  });
   it('cancels pending effects on undo and unmount', () => {
-    const [before, next] = capture(19, 5); const state = ref(before); const hit = vi.fn(); let impact!: ReturnType<typeof useMoveImpact>;
-    wrapper = mount(defineComponent({ setup() { impact = useMoveImpact(() => state.value, hit); return () => null; } }));
+    const [before, next] = capture(19, 5); const state = ref(before); const start = vi.fn(); let impact!: ReturnType<typeof useMoveImpact>;
+    wrapper = mount(defineComponent({ setup() { impact = useMoveImpact(() => state.value, start); return () => null; } }));
     state.value = next; state.value = { ...before, revision: 2 }; vi.advanceTimersByTime(2000);
-    expect(impact.busy.value).toBe(false); expect(hit).not.toHaveBeenCalled();
-    state.value = { ...next, revision: 3 }; wrapper.unmount(); wrapper = undefined; vi.advanceTimersByTime(2000); expect(hit).not.toHaveBeenCalled();
+    expect(impact.busy.value).toBe(false); expect(impact.scene.value).toBeNull(); expect(impact.displayed.value.board[8]).toBe('white');
+    expect(start).toHaveBeenCalledOnce();
+    state.value = { ...next, revision: 3 }; wrapper.unmount(); wrapper = undefined; vi.advanceTimersByTime(2000);
+    expect(impact.busy.value).toBe(false); expect(impact.scene.value).toBeNull(); expect(start).toHaveBeenCalledTimes(2);
   });
 });

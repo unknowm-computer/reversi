@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { characterName, otherCharacter, type Character } from '../../../shared/game/types';
 import CharacterArt from './CharacterArt.vue';
-interface Props { recipient: Character }
-defineProps<Props>();
+interface Props { recipient: Character; begging?: boolean }
+withDefaults(defineProps<Props>(), { begging: false });
 </script>
 <template>
-  <div class="choice-scene" role="img" :aria-label="`${characterName(recipient)}가 무릎을 꿇고 두 손을 모아 용서를 구하고, ${characterName(otherCharacter(recipient))}는 팔짱을 끼고 웃으며 고민하고 있어요.`">
+  <div class="choice-scene" role="img" :aria-label="`${characterName(recipient)}가 무릎을 꿇고 두 손을 모아 용서를 구하고, ${characterName(otherCharacter(recipient))}는 ${otherCharacter(recipient) === 'grasshopper' ? '바이올린을 안고 턱에 손을 얹은 채' : '팔짱을 끼고'} 고민하고 있어요.`">
     <div class="character-side" aria-hidden="true">
-      <span class="speech pleading">한 번만 봐줘~</span>
+      <span class="speech pleading">{{ begging ? '제발 봐주세요…' : '한 번만 봐줘~' }}</span>
       <div class="figure"><CharacterArt :character="recipient" pose="plead" /></div>
       <span class="character-label">{{ characterName(recipient) }}</span>
     </div>

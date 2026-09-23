@@ -25,6 +25,10 @@ const emit = defineEmits<{ (event: 'close'): void }>();
       <p><strong>조이패드</strong> 연결 후 버튼을 한 번 눌렀다 떼면 인식돼요. 십자키·왼쪽 스틱으로 이동하고 아래쪽 버튼(Xbox A / PlayStation ×)으로 놓으세요. 노란 테두리가 선택한 칸이에요.</p>
       <p>표준 버튼 배치를 지원하는 패드가 필요해요. 연결되지 않으면 키보드·마우스·터치를 사용할 수 있어요. 설정과 팝업은 마우스·터치·키보드로 조작하세요.</p>
     </section>
+    <section aria-labelledby="hint-help-title">
+      <h3 id="hint-help-title">혼자 놀기 힌트</h3>
+      <p>내 차례에 프로필의 전구 모양 힌트 버튼을 누르면 추천 칸에 금색 전구가 나타나요. 횟수 제한 없이 사용할 수 있으며, 돌은 직접 놓으세요. 힌트를 보는 동안에도 제한 시간은 계속 흘러요.</p>
+    </section>
     <section aria-labelledby="undo-help-title">
       <h3 id="undo-help-title">무르기와 기권</h3>
       <p>한 수 무르기 버튼의 괄호는 남은 횟수예요. ∞는 무제한, 0은 사용할 수 없다는 뜻이에요.</p>
