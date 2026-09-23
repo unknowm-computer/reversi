@@ -7,7 +7,7 @@ import { useCharacterReaction } from './useCharacterReaction';
 import { useMoveImpact, IMPACT_MS } from './useMoveImpact';
 import { useTimeoutPenalty } from './useTimeoutPenalty';
 import { legalMoves, opposite } from '../../shared/game/rules';
-import { characterName, otherCharacter, type Color, type GameSettings, type GameState, type Reaction } from '../../shared/game/types';
+import { characterName, otherCharacter, TURN_WARNING_MS, type Color, type GameSettings, type GameState, type Reaction } from '../../shared/game/types';
 export function useGameController() {
   const store = useGameStore();
   const screen = ref<'setup' | 'lobby' | 'game'>('setup');
@@ -19,17 +19,17 @@ export function useGameController() {
   let remotePenaltyKey: string | null = null;
   let worker: Worker | null = null, animationTimer: number | undefined;
   let pendingTurn = false;
-  let warnedHalf = false, warnedUrgent = false;
+  let warnedHalf = false;
+  let lastCountdownSecond: number | null = null;
   const penalty = useTimeoutPenalty(() => {
-    warnedHalf = warnedUrgent = false;
+    warnedHalf = false; lastCountdownSecond = null;
     if (store.settings.mode === 'online') return;
     timer.start(store.settings.seconds * 1000);
     startAi();
   });
   const timer = useTurnTimer(() => {
     cancelWork(); timer.stop(); reaction.reset(); pendingTurn = false;
-    if (store.settings.mode === 'local') { localTimeout.value = store.state.turn; return; }
-    penalty.begin(store.state.turn); audio.sfx('bonk');
+    localTimeout.value = store.state.turn;
   });
   const online = useOnlineRoom(room => {
     paused.value = false;
@@ -38,7 +38,7 @@ export function useGameController() {
       const changed = before.gameId !== room.game.gameId || before.revision !== room.game.revision;
       store.online(room.game, room.settings); screen.value = 'game';
       if (changed) {
-        warnedHalf = warnedUrgent = false;
+        warnedHalf = false; lastCountdownSecond = null;
         if (room.game.revision > 0 && before.gameId === room.game.gameId && (room.game.flipped.length || room.game.result)) {
           reaction.transition(before, room.game, store.settings.blackCharacter); audio.sfx(reaction.event.value, room.game.flipped.length);
         } else reaction.reset();
@@ -56,17 +56,20 @@ export function useGameController() {
   const myColor = computed<Color>(() => store.settings.mode === 'online' ? online.color.value : 'black');
   const available = computed(() => store.state.result ? [] : legalMoves(store.state.board, store.state.turn));
   const disconnected = computed(() => store.settings.mode === 'online' && (!online.connected.value || online.room.value?.players.some(p => !p.connected)));
+  const connectionNotice = computed<string>(() => disconnected.value ? '연결을 기다리고 있어요. 서버 시간은 계속 흐릅니다.' : '');
   const timeoutLoser = computed<Color | null>(() => store.settings.mode === 'online' ? (online.room.value?.timeout?.phase === 'decision' ? online.room.value.timeout.loser : null) : localTimeout.value);
+  // A decision begins once per timeout; repeated online snapshots must stay silent.
+  watch(timeoutLoser, loser => { if (loser) audio.sfx('timeout'); }, { flush: 'sync' });
   const timeoutPending = computed(() => store.settings.mode === 'online' ? Boolean(online.room.value?.timeout) : localTimeout.value !== null);
   const timeoutDecider = computed(() => timeoutLoser.value ? opposite(timeoutLoser.value) : null);
-  const canDecideTimeout = computed(() => timeoutDecider.value !== null && (store.settings.mode === 'local' || timeoutDecider.value === myColor.value));
+  const canDecideTimeout = computed(() => timeoutDecider.value !== null && (store.settings.mode !== 'online' || timeoutDecider.value === myColor.value));
   const decisionBlocked = computed(() => Boolean(disconnected.value || online.busy.value || paused.value));
   const canMove = computed(() => screen.value === 'game' && !timeoutPending.value && !store.state.result && !penalty.recipient.value && !impact.busy.value && !animating.value && !thinking.value && !paused.value && !disconnected.value && !online.busy.value && (store.settings.mode !== 'online' || store.state.turn === myColor.value));
   function name(color: Color): string { return characterName(color === 'black' ? store.settings.blackCharacter : otherCharacter(store.settings.blackCharacter)); }
   const status = computed(() => {
     if (impact.scene.value) return `한 수에 ${impact.scene.value.count}개! 강력한 한 방!`;
     if (store.state.result) return store.state.result.winner ? `${name(store.state.result.winner)}의 승리!` : '사이좋게 무승부!';
-    if (disconnected.value) return '연결을 기다리고 있어요. 서버 시간은 계속 흐릅니다.';
+    if (connectionNotice.value) return connectionNotice.value;
     if (paused.value) return '잠시 쉬어가는 중';
     if (timeoutDecider.value) return `${name(timeoutDecider.value)}의 선택을 기다리고 있어요. 대국 시간은 멈춰 있어요.`;
     if (penalty.recipient.value) return `${name(penalty.recipient.value)}, 꿀밤 한 대! 같은 차례로 계속해요.`;
@@ -82,7 +85,7 @@ export function useGameController() {
     if (reaction.until.value > clock.value) return reaction.reactions.value[color];
     if (store.state.result) return store.state.result.winner === null ? 'draw' : store.state.result.winner === color ? 'win' : 'lose';
     if (store.state.turn !== color) return 'idle';
-    if (store.settings.seconds && timer.remaining.value <= 5000) return 'urgent';
+    if (store.settings.seconds && timer.remaining.value <= TURN_WARNING_MS) return 'urgent';
     if (thinking.value || (store.settings.seconds && timer.remaining.value <= store.settings.seconds * 500)) return 'think';
     return 'idle';
   }
@@ -111,7 +114,7 @@ export function useGameController() {
     if (store.state.result || penalty.recipient.value || timeoutPending.value) return;
     const before = store.state;
     if (!store.move(index, timer.remaining.value)) return;
-    timer.stop(); warnedHalf = warnedUrgent = false;
+    timer.stop(); warnedHalf = false; lastCountdownSecond = null;
     reaction.transition(before, store.state, store.settings.blackCharacter); audio.sfx(reaction.event.value, store.state.flipped.length);
     if (store.state.result) { pendingTurn = false; return; }
     animating.value = true; pendingTurn = true;
@@ -126,20 +129,20 @@ export function useGameController() {
     localTimeout.value = null; remotePenaltyKey = null;
     cancelWork(); penalty.cancel(); pendingTurn = false; audio.reset(); reaction.reset();
     store.start({ ...settings, blackCharacter: settings.mode === 'ai' ? 'grasshopper' : settings.blackCharacter });
-    screen.value = 'game'; warnedHalf = warnedUrgent = false; paused.value = document.hidden;
+    screen.value = 'game'; warnedHalf = false; lastCountdownSecond = null; paused.value = document.hidden;
     timer.start(settings.seconds * 1000); if (paused.value) timer.pause();
     void audio.unlock(); audio.sfx('button');
   }
-  function undo(): void {
-    if (!store.canUndo || timeoutPending.value || (store.settings.mode === 'local' && penalty.recipient.value)) return;
+  function undo(color?: Color): void {
+    if (!(color ? store.canUndoFor(color) : store.canUndo) || timeoutPending.value || (store.settings.mode === 'local' && penalty.recipient.value)) return;
     cancelWork(); penalty.cancel(); pendingTurn = false; audio.reset();
-    const restored = store.undo();
+    const restored = store.undo(color);
     if (!restored) return;
     reaction.undo(restored.actor); audio.sfx('undo');
     timer.start(restored.remaining); if (paused.value) timer.pause();
     // A restored turn does not replay timer warnings that already happened.
     warnedHalf = restored.remaining <= store.settings.seconds * 500;
-    warnedUrgent = restored.remaining <= 5000;
+    lastCountdownSecond = restored.remaining <= TURN_WARNING_MS ? Math.ceil(restored.remaining / 1000) : null;
   }
   function chooseTimeout(choice: 'forgive' | 'end'): void {
     if (!canDecideTimeout.value || decisionBlocked.value || timeoutLoser.value === null) return;
@@ -176,13 +179,22 @@ export function useGameController() {
   const pulse = window.setInterval(() => {
     clock.value = Date.now();
     if (screen.value !== 'game' || store.state.result || !store.settings.seconds || timeoutPending.value || penalty.recipient.value || paused.value || animating.value) return;
-    if (timer.remaining.value <= 5000 && !warnedUrgent) { warnedUrgent = true; warnedHalf = true; audio.sfx('urgent'); }
-    else if (timer.remaining.value <= store.settings.seconds * 500 && !warnedHalf) { warnedHalf = true; audio.sfx('tick'); }
+    const secondsLeft = Math.ceil(timer.remaining.value / 1000);
+    if (timer.remaining.value > 0 && timer.remaining.value <= TURN_WARNING_MS) {
+      warnedHalf = true;
+      if (secondsLeft !== lastCountdownSecond) {
+        lastCountdownSecond = secondsLeft;
+        audio.sfx('countdown', secondsLeft);
+      }
+    } else {
+      lastCountdownSecond = null;
+      if (timer.remaining.value > 0 && timer.remaining.value <= store.settings.seconds * 500 && !warnedHalf) { warnedHalf = true; audio.sfx('tick'); }
+    }
   }, 150);
   watch(() => [screen.value, store.counts.empty, Boolean(store.state.result)] as const, () => {
     audio.changeScene(screen.value !== 'game' ? 'lobby' : store.state.result ? 'off' : store.counts.empty <= 10 ? 'late' : 'game');
   }, { immediate: true });
   if (online.hasSession) online.connect();
   onUnmounted(() => { cancelWork(); window.clearInterval(pulse); document.removeEventListener('visibilitychange', visibility); });
-  return { store, screen, audio, online, timer, penalty, impact, status, thinking, animating, paused, available, canMove, myColor, timeoutLoser, timeoutPending, timeoutDecider, canDecideTimeout, decisionBlocked, chooseTimeout, name, mood, move, start, undo, finish, home, rematch };
+  return { store, screen, audio, online, timer, penalty, impact, status, connectionNotice, thinking, animating, paused, available, canMove, myColor, timeoutLoser, timeoutPending, timeoutDecider, canDecideTimeout, decisionBlocked, chooseTimeout, name, mood, move, start, undo, finish, home, rematch };
 }

@@ -5,6 +5,29 @@ import { initialState, legalMoves } from '../shared/game/rules';
 import { DEFAULT_SETTINGS, type Cell } from '../shared/game/types';
 beforeEach(() => setActivePinia(createPinia()));
 describe('Undo contracts', () => {
+  it('restores a local player’s own move and charges only their allowance', () => {
+    const store = useGameStore(); store.start({ ...DEFAULT_SETTINGS, mode: 'local', undoLimit: 1 });
+    const board = [...store.state.board];
+    store.move(19, 21000); store.move(18, 27000);
+    store.undoUsed.white = 1;
+    expect(store.canUndo).toBe(false);
+    expect(store.canUndoFor('black')).toBe(true);
+    expect(store.undo('black')).toEqual({ remaining: 21000, actor: 'black' });
+    expect(store.state.board).toEqual(board);
+    expect(store.history).toHaveLength(0);
+    expect(store.undoUsed).toEqual({ black: 1, white: 1 });
+    store.move(19, 19000); store.move(18, 20000);
+    expect(store.canUndoFor('black')).toBe(false);
+    expect(store.undo('black')).toBeNull();
+  });
+  it('does not let the AI or an online player use a personal undo', () => {
+    const store = useGameStore(); store.start(DEFAULT_SETTINGS);
+    store.move(19, 23000); store.move(18, 25000);
+    expect(store.undo('white')).toBeNull();
+    store.start({ ...DEFAULT_SETTINGS, mode: 'online' }); store.move(19, 23000);
+    expect(store.canUndoFor('black')).toBe(false);
+    expect(store.undo('black')).toBeNull();
+  });
   it('undoes a human move before the AI responds', () => {
     const store = useGameStore(); store.start(DEFAULT_SETTINGS); const board = [...store.state.board];
     store.move(19, 23000); expect(store.undo()).toEqual({ remaining: 23000, actor: 'black' });

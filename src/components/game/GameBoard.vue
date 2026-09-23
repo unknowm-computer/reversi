@@ -53,11 +53,10 @@ function navigate(event: KeyboardEvent, index: number): void {
     </div>
     <div class="board-label" aria-hidden="true">JANNABI & GRASSHOPPER · REVERSI CLUB</div>
   </div>
-  <p class="gamepad-note" role="status">{{ padMessage }}</p>
+  <p class="sr-only" role="status">{{ padMessage }}</p>
   </div>
 </template>
 <style scoped lang="scss">
-.gamepad-note { font-size: var(--text-caption); color: var(--muted); line-height: 1.6; margin: 14px 0 0; text-align: center; }
 .cell.pad-cursor { outline: 3px solid #ffe4a1; outline-offset: -4px; z-index: 2; background: #e9d69725; }
 .board-frame { position: relative; padding: 27px 17px 25px 27px; background: #315548; border: 1px solid #214237; border-radius: 15px; box-shadow: 0 5px 0 #213e32, 0 14px 26px #243e3217; width: 100%; }
 .board { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); aspect-ratio: 1; border: 1px solid #1b3d32; border-radius: 3px; background: #47765b; }

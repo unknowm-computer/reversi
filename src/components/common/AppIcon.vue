@@ -1,7 +1,8 @@
 <script setup lang="ts">
-interface Props { name: 'sound' | 'muted' | 'arrow' | 'undo' | 'flag' | 'close' | 'help' | 'leaf' | 'users' | 'globe' | 'spark' | 'copy' | 'home' }
+interface Props { name: 'sound' | 'muted' | 'arrow' | 'undo' | 'flag' | 'close' | 'help' | 'leaf' | 'users' | 'globe' | 'spark' | 'copy' | 'home' | 'turn' }
 defineProps<Props>();
 const paths: Record<Props['name'], string> = {
+  turn: 'm8 5 11 7-11 7V5Z',
   sound: 'M11 5 6 9H3v6h3l5 4V5Zm4 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14',
   muted: 'M11 5 6 9H3v6h3l5 4V5Zm5 4 5 6m0-6-5 6',
   arrow: 'M4 12h16m-6-6 6 6-6 6', undo: 'M9 5 4 10l5 5M4 10h10a5 5 0 0 1 0 10',

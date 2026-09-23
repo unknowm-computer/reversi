@@ -42,8 +42,18 @@ export function useGameAudio() {
       if (context.state === 'suspended') await context.resume();
     } catch { /* Sound must never block gameplay when the browser denies audio. */ }
   }
-  function sfx(kind: 'move' | 'pass' | 'reverse' | 'capture' | 'undo' | 'end' | 'tick' | 'urgent' | 'button' | 'bonk' | 'laugh' | 'whistle', count = 0): void {
+  function sfx(kind: 'move' | 'pass' | 'reverse' | 'capture' | 'undo' | 'end' | 'tick' | 'urgent' | 'countdown' | 'timeout' | 'button' | 'bonk' | 'laugh' | 'whistle', count = 0): void {
     if (!enabled.value || !context || !master || context.state !== 'running' || document.hidden) return;
+    if (kind === 'timeout') {
+      tone(1320, context.currentTime, .22, .12, master, 'square');
+      return;
+    }
+    if (kind === 'countdown') {
+      // Alternate two short, percussive pitches for a clock-like tick-tock.
+      tone(count % 2 === 0 ? 1900 : 1400, context.currentTime, .045, .09, master, 'triangle');
+      tone(180, context.currentTime, .025, .035, master);
+      return;
+    }
     if (kind === 'laugh' || kind === 'whistle') {
       const notes = kind === 'laugh' ? [190, 165, 200, 155, 175, 140] : [1175, 1568, 1397, 1760, 1568];
       notes.forEach((note, index) => {

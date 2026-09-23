@@ -32,3 +32,4 @@ export const otherCharacter = (character: Character): Character => character ===
 export const colorName = (color: Color): string => color === 'black' ? '흑' : '백';
 
 export const TIMEOUT_PENALTY_MS = 2400;
+export const TURN_WARNING_MS = 10000;

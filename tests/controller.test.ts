@@ -79,7 +79,7 @@ describe('Controller lifecycle', () => {
   it('restores exactly the pre-move remaining time on undo', () => {
     controller.start({ ...DEFAULT_SETTINGS, seconds: 30 }); vi.advanceTimersByTime(6500); controller.move(19); controller.undo();
     expect(controller.timer.remaining.value).toBe(23500); vi.advanceTimersByTime(23500);
-    expect(controller.store.state.result).toBeNull(); expect(controller.penalty.recipient.value).toBe('black');
+    expect(controller.store.state.result).toBeNull(); expect(controller.timeoutLoser.value).toBe('black');
   });
   it('pauses time on a hidden tab and resumes without granting extra time', () => {
     controller.start({ ...DEFAULT_SETTINGS, mode: 'local', seconds: 30 }); vi.advanceTimersByTime(10000); hidden(true); vi.advanceTimersByTime(60000);
@@ -100,17 +100,23 @@ describe('Controller lifecycle', () => {
   });
 });
 
-describe('AI timeout bonk', () => {
-  it.each([30, 60] as const)('repeats a cosmetic penalty without changing the board or turn (%ss)', seconds => {
+describe('AI timeout choice', () => {
+  it.each([30, 60] as const)('waits for forgiveness before each penalty without changing the board or turn (%ss)', seconds => {
     controller.start({ ...DEFAULT_SETTINGS, seconds });
     const before = JSON.stringify(controller.store.state);
     for (let n = 0; n < 2; n++) {
       vi.advanceTimersByTime(seconds * 1000);
-      expect(controller.penalty.recipient.value).toBe('black');
+      expect(controller.timeoutLoser.value).toBe('black');
+      expect(controller.canDecideTimeout.value).toBe(true);
+      expect(controller.penalty.recipient.value).toBeNull();
       expect(controller.canMove.value).toBe(false);
       controller.move(19);
       expect(JSON.stringify(controller.store.state)).toBe(before);
       expect(controller.store.history).toHaveLength(0);
+      vi.advanceTimersByTime(5000);
+      expect(controller.timer.remaining.value).toBe(0);
+      controller.chooseTimeout('forgive');
+      expect(controller.penalty.recipient.value).toBe('black');
       vi.advanceTimersByTime(TIMEOUT_PENALTY_MS);
       expect(controller.penalty.recipient.value).toBeNull();
       expect(controller.timer.remaining.value).toBe(seconds * 1000);
@@ -121,10 +127,11 @@ describe('AI timeout bonk', () => {
   it('does not accept a click at the exact deadline before the interval notices', () => {
     controller.start({ ...DEFAULT_SETTINGS, seconds: 30 });
     vi.setSystemTime(Date.now() + 30001); controller.move(19);
-    expect(controller.penalty.recipient.value).toBe('black'); expect(controller.store.state.lastMove).toBeNull();
+    expect(controller.timeoutLoser.value).toBe('black'); expect(controller.store.state.lastMove).toBeNull();
   });
   it('pauses the penalty when hidden and resumes the remaining animation time', () => {
-    controller.start({ ...DEFAULT_SETTINGS, seconds: 30 }); vi.advanceTimersByTime(30500);
+    controller.start({ ...DEFAULT_SETTINGS, seconds: 30 }); vi.advanceTimersByTime(30000);
+    controller.chooseTimeout('forgive'); vi.advanceTimersByTime(500);
     hidden(true); vi.advanceTimersByTime(60000);
     expect(controller.penalty.recipient.value).toBe('black');
     hidden(false); vi.advanceTimersByTime(TIMEOUT_PENALTY_MS - 500);
@@ -141,15 +148,17 @@ describe('AI timeout bonk', () => {
   it('cancels an AI timeout and rejects the old worker even though the position is unchanged', () => {
     controller.start({ ...DEFAULT_SETTINGS, seconds: 30 }); controller.move(19); vi.advanceTimersByTime(500);
     const old = FakeWorker.instances[0]; vi.advanceTimersByTime(30000);
-    expect(controller.penalty.recipient.value).toBe('white'); expect(old.terminated).toBe(true);
+    expect(controller.timeoutLoser.value).toBe('white'); expect(old.terminated).toBe(true);
     old.reply(18); expect(controller.store.state.revision).toBe(1);
+    controller.chooseTimeout('forgive');
     vi.advanceTimersByTime(TIMEOUT_PENALTY_MS); old.reply(18);
     expect(controller.store.state.revision).toBe(1);
     FakeWorker.instances[1].reply(18); expect(controller.store.state.revision).toBe(2);
   });
   it('undo cancels the penalty and restores the pre-move clock', () => {
     controller.start({ ...DEFAULT_SETTINGS, seconds: 30 }); vi.advanceTimersByTime(5000); controller.move(19);
-    vi.advanceTimersByTime(30500); expect(controller.penalty.recipient.value).toBe('white');
+    vi.advanceTimersByTime(30500); expect(controller.timeoutLoser.value).toBe('white');
+    controller.chooseTimeout('forgive'); expect(controller.penalty.recipient.value).toBe('white');
     controller.undo(); expect(controller.penalty.recipient.value).toBeNull(); expect(controller.timer.remaining.value).toBe(25000);
     vi.advanceTimersByTime(TIMEOUT_PENALTY_MS); expect(controller.store.state.turn).toBe('black');
     expect(FakeWorker.instances).toHaveLength(1); expect(controller.timer.remaining.value).toBe(22600);
@@ -190,5 +199,112 @@ describe('Local timeout choice', () => {
     await controller.home(); expect(controller.timeoutLoser.value).toBeNull();
     controller.start({ ...DEFAULT_SETTINGS, mode: 'local' }); vi.advanceTimersByTime(30000);
     controller.start(DEFAULT_SETTINGS); expect(controller.timeoutLoser.value).toBeNull(); expect(controller.timer.remaining.value).toBe(30000);
+  });
+});
+
+describe('Countdown warning sounds', () => {
+  it.each([30, 60] as const)('ticks once per second from ten to one with a %s-second timer', seconds => {
+    controller.start({ ...DEFAULT_SETTINGS, mode: 'local', seconds });
+    const sound = vi.spyOn(controller.audio, 'sfx');
+    const ticks = (): number[] => sound.mock.calls.filter(([kind]) => kind === 'countdown').map(([, remaining]) => remaining!);
+    vi.advanceTimersByTime((seconds - 10) * 1000 - 1);
+    expect(ticks()).toEqual([]);
+    vi.advanceTimersByTime(151);
+    expect(ticks()).toEqual([10]);
+    vi.advanceTimersByTime(9000);
+    expect(ticks()).toEqual([10, 9, 8, 7, 6, 5, 4, 3, 2, 1]);
+    vi.advanceTimersByTime(2000);
+    expect(ticks()).toEqual([10, 9, 8, 7, 6, 5, 4, 3, 2, 1]);
+    expect(controller.timeoutPending.value).toBe(true);
+  });
+
+  it('pauses countdown sounds on a hidden tab without replaying the current second', () => {
+    controller.start({ ...DEFAULT_SETTINGS, mode: 'local', seconds: 30 });
+    const sound = vi.spyOn(controller.audio, 'sfx');
+    vi.advanceTimersByTime(20200);
+    sound.mockClear();
+    hidden(true); vi.advanceTimersByTime(5000);
+    expect(sound).not.toHaveBeenCalled();
+    hidden(false); vi.advanceTimersByTime(200);
+    expect(sound).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(900);
+    expect(sound.mock.calls).toEqual([['countdown', 9]]);
+  });
+
+  it('resumes ticking after undo and resets the countdown when the next turn starts', () => {
+    controller.start({ ...DEFAULT_SETTINGS, mode: 'local', seconds: 30 });
+    vi.advanceTimersByTime(20500); controller.move(19);
+    vi.advanceTimersByTime(500);
+    const sound = vi.spyOn(controller.audio, 'sfx');
+    vi.advanceTimersByTime(1000);
+    expect(sound).not.toHaveBeenCalled();
+    controller.undo('black');
+    expect(controller.timer.remaining.value).toBe(9500);
+    sound.mockClear(); vi.advanceTimersByTime(1000);
+    expect(sound.mock.calls).toEqual([['countdown', 9]]);
+    controller.finish('black', 'resign'); sound.mockClear();
+    vi.advanceTimersByTime(2000);
+    expect(sound).not.toHaveBeenCalled();
+  });
+
+  it('does not tick without a time limit or after leaving the game', async () => {
+    controller.start({ ...DEFAULT_SETTINGS, mode: 'local', seconds: 0 });
+    const sound = vi.spyOn(controller.audio, 'sfx');
+    vi.advanceTimersByTime(60000); expect(sound).not.toHaveBeenCalled();
+    controller.start({ ...DEFAULT_SETTINGS, mode: 'local', seconds: 30 });
+    vi.advanceTimersByTime(20200); await controller.home(); sound.mockClear();
+    vi.advanceTimersByTime(10000); expect(sound).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('Timeout beep and choice', () => {
+  it.each(['ai', 'local'] as const)('beeps once at zero in %s and once again after a new timeout', mode => {
+    controller.start({ ...DEFAULT_SETTINGS, mode, seconds: 30 });
+    const sound = vi.spyOn(controller.audio, 'sfx');
+    const beeps = (): number => sound.mock.calls.filter(([kind]) => kind === 'timeout').length;
+    vi.advanceTimersByTime(29999); expect(beeps()).toBe(0);
+    vi.advanceTimersByTime(1); expect(beeps()).toBe(1);
+    expect(controller.timeoutPending.value).toBe(true);
+    expect(controller.canDecideTimeout.value).toBe(true);
+    expect(controller.penalty.recipient.value).toBeNull();
+    vi.advanceTimersByTime(60000); controller.move(19); controller.undo();
+    expect(beeps()).toBe(1);
+    expect(controller.store.state.lastMove).toBeNull();
+    controller.chooseTimeout('forgive');
+    vi.advanceTimersByTime(TIMEOUT_PENALTY_MS + 30000);
+    expect(beeps()).toBe(2);
+  });
+
+  it.each(['black', 'white'] as const)('allows ending a solo game after %s times out', loser => {
+    controller.start({ ...DEFAULT_SETTINGS, seconds: 30 });
+    if (loser === 'white') { controller.move(19); vi.advanceTimersByTime(500); }
+    vi.advanceTimersByTime(30000);
+    expect(controller.timeoutLoser.value).toBe(loser);
+    controller.chooseTimeout('end');
+    expect(controller.store.state.result).toEqual({ winner: loser === 'black' ? 'white' : 'black', reason: 'timeout' });
+    expect(controller.timeoutLoser.value).toBeNull();
+    expect(controller.penalty.recipient.value).toBeNull();
+  });
+
+  it('does not replay the beep for repeated online decision snapshots', () => {
+    controller.start({ ...DEFAULT_SETTINGS, mode: 'online', seconds: 30 });
+    const sound = vi.spyOn(controller.audio, 'sfx');
+    const room = {
+      code: 'ABCDEF', settings: controller.store.settings, players: [],
+      game: controller.store.state, deadline: null, serverNow: Date.now(), revision: 2,
+      timeout: { phase: 'decision' as const, loser: 'black' as const },
+    };
+    controller.online.room.value = room;
+    expect(sound.mock.calls).toEqual([['timeout']]);
+    controller.online.room.value = { ...room, revision: 3 };
+    controller.online.room.value = { ...room, revision: 4 };
+    expect(sound.mock.calls).toEqual([['timeout']]);
+    expect(controller.canDecideTimeout.value).toBe(false);
+    controller.online.color.value = 'white';
+    expect(controller.canDecideTimeout.value).toBe(true);
+    controller.online.room.value = { ...room, timeout: null };
+    controller.online.room.value = { ...room, revision: 5 };
+    expect(sound.mock.calls).toEqual([['timeout'], ['timeout']]);
   });
 });
