@@ -106,6 +106,11 @@ function confirm(): void {
       <p v-if="store.settings.mode === 'online' && online.error.value" class="game-error" role="alert">{{ online.error.value }}</p>
       <p v-if="game.decisionBlocked.value" class="confirm-text">연결과 요청 처리를 기다리고 있어요.</p>
     </ModalDialog>
+    <ModalDialog v-else-if="store.settings.mode === 'online' && game.timeoutLoser.value" :dismissible="false" title="상대의 결정을 기다리고 있어요">
+      <TimeoutChoiceScene :recipient="character(game.timeoutLoser.value)" begging />
+      <p class="confirm-text" role="status">시간이 초과됐어요. 상대가 이번 한 수를 봐줄지 결정하고 있어요.<br>결정이 도착하면 자동으로 이어집니다. 잠시만 기다려 주세요.</p>
+      <p v-if="game.connectionNotice.value" class="game-error" role="alert">{{ game.connectionNotice.value }}</p>
+    </ModalDialog>
     <ModalDialog v-else-if="modal === 'rules'" title="한 판이면 익숙해져요." @close="modal = null"><GameRules @close="modal = null" /></ModalDialog>
     <ModalDialog v-else-if="modal === 'resign' || modal === 'home'" :title="modal === 'resign' ? '이번 판은 여기까지 할까요?' : '처음으로 돌아갈까요?'" @close="modal = null"><p class="confirm-text">{{ modal === 'resign' ? `${game.name(resigningColor)}의 기권으로 대국이 끝나요.` : store.settings.mode === 'online' || screen === 'lobby' ? '방을 나가면 친구와의 대국도 종료돼요.' : '진행 중인 대국은 저장되지 않아요.' }}</p><div class="confirm-actions"><button class="secondary" @click="modal = null">계속하기</button><button class="primary" @click="confirm">{{ modal === 'resign' ? '기권하기' : '돌아가기' }}</button></div></ModalDialog>
     <ModalDialog v-else-if="resultVisible" title="오늘의 한 판" @close="resultDismissed = true"><ResultPanel :game="store.state" :black-character="store.settings.blackCharacter" :can-undo="store.canUndo" :online="store.settings.mode === 'online'" :requested="Boolean(online.room.value?.players.find(p => p.color === myColor)?.rematch)" :busy="online.busy.value" @rematch="game.rematch" @home="game.home" @undo="game.undo" /></ModalDialog>

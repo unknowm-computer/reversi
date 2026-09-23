@@ -8,6 +8,7 @@ import ModalDialog from '../src/components/common/ModalDialog.vue';
 import PlayerPanel from '../src/components/game/PlayerPanel.vue';
 import SetupPanel from '../src/components/game/SetupPanel.vue';
 import { useGameStore } from '../src/stores/game';
+import * as gameController from '../src/composables/useGameController';
 import { opposite } from '../shared/game/rules';
 import { DEFAULT_SETTINGS, TIMEOUT_PENALTY_MS, type Cell, type Color, type GameSettings, type GameState } from '../shared/game/types';
 
@@ -64,6 +65,49 @@ afterEach(() => {
 });
 
 describe('Turn-based player actions', () => {
+  it.each(['black', 'white'] as const)('shows a waiting dialog to the timed-out online %s player until the opponent decides', async color => {
+    const createController = gameController.useGameController;
+    let controller!: ReturnType<typeof createController>;
+    vi.spyOn(gameController, 'useGameController').mockImplementation(() => {
+      controller = createController();
+      return controller;
+    });
+    await start({ mode: 'online', seconds: 30 });
+    controller.online.color.value = color;
+    controller.online.connected.value = true;
+    const room = {
+      code: 'ABCDEF', settings: store.settings, players: [], game: store.state,
+      deadline: null, serverNow: Date.now(), revision: 2,
+      timeout: { phase: 'decision' as const, loser: color },
+    };
+    controller.online.room.value = room;
+    await nextTick();
+    const dialog = wrapper!.getComponent(ModalDialog);
+    expect(dialog.props('title')).toBe('상대의 결정을 기다리고 있어요');
+    expect(dialog.props('dismissible')).toBe(false);
+    expect(dialog.findAll('button')).toHaveLength(0);
+    await dialog.get('dialog').trigger('cancel');
+    expect(wrapper!.getComponent(ModalDialog).exists()).toBe(true);
+    expect(controller.canMove.value).toBe(false);
+
+    controller.online.color.value = opposite(color);
+    await nextTick();
+    expect(dialogAction('봐준다').exists()).toBe(true);
+    expect(dialogAction('게임 종료').exists()).toBe(true);
+    controller.online.color.value = color;
+    controller.online.room.value = { ...room, timeout: { phase: 'penalty', loser: color, resumesAt: Date.now() + TIMEOUT_PENALTY_MS } };
+    await nextTick();
+    expect(wrapper!.findComponent(ModalDialog).exists()).toBe(false);
+
+    controller.online.room.value = { ...room, revision: 3 };
+    await nextTick();
+    expect(wrapper!.getComponent(ModalDialog).props('title')).toBe('상대의 결정을 기다리고 있어요');
+    store.finish(color, 'timeout');
+    controller.online.room.value = { ...room, game: store.state, timeout: null, revision: 4 };
+    await nextTick();
+    expect(wrapper!.findAllComponents(ModalDialog).some(modal => modal.props('title') === '상대의 결정을 기다리고 있어요')).toBe(false);
+  });
+
   it('shows unlimited solo hints on the board without placing a stone, then clears the hint on a move', async () => {
     let hintWorker: HintWorker | undefined;
     class HintWorker {
