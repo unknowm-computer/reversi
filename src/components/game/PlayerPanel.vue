@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useId } from 'vue';
 import type { Character, Color, Reaction } from '../../../shared/game/types';
 import { characterName, TURN_WARNING_MS } from '../../../shared/game/types';
 import AppIcon from '../common/AppIcon.vue';
@@ -21,11 +22,21 @@ interface Props {
 }
 withDefaults(defineProps<Props>(), { showActions: false, canUndo: false, canResign: false, showHint: false, canHint: false, hintBusy: false });
 const emit = defineEmits<{ (event: 'undo'): void; (event: 'resign'): void; (event: 'hint'): void }>();
+const portraitClipId = useId();
 </script>
 <template>
   <section class="player-panel" :class="{ active, 'with-actions': showActions, 'with-hint': showActions && showHint }" :aria-label="`${characterName(character)} ${color === 'black' ? '흑' : '백'}, ${count}개`">
     <div class="avatar">
-      <div class="portrait"><CharacterArt :character="character" :mood="mood" portrait /></div>
+      <svg v-if="character === 'grasshopper'" class="portrait-clip" aria-hidden="true" width="0" height="0">
+        <defs>
+          <clipPath :id="portraitClipId" clipPathUnits="objectBoundingBox">
+            <circle cx=".5" cy=".5" r=".5" />
+            <!-- Open the top of the circular crop so the moving antennae remain visible. -->
+            <rect x="-.15" y="-.25" width="1.3" height=".75" />
+          </clipPath>
+        </defs>
+      </svg>
+      <div class="avatar-crop" :class="{ 'with-antennae': character === 'grasshopper' }" :style="character === 'grasshopper' ? { clipPath: `url(#${portraitClipId})` } : undefined"><CharacterArt :character="character" :mood="mood" portrait /></div>
       <span v-if="active" class="turn-indicator" role="img" :aria-label="`${characterName(character)} · ${color === 'black' ? '흑' : '백'}의 차례`" title="현재 차례"><AppIcon name="turn" /></span>
     </div>
     <h2 class="player-info">{{ characterName(character) }}<span class="stone-tag" :class="color" /><span class="color-text">{{ color === 'black' ? '흑' : '백' }}</span></h2>
@@ -58,7 +69,9 @@ const emit = defineEmits<{ (event: 'undo'): void; (event: 'resign'): void; (even
 }
 .player-panel.active { background: #eef1e0; border-color: #a9b78b; }
 .avatar { grid-column: 1; grid-row: 1 / 3; position: relative; width: 85px; height: 85px; }
-.portrait { width: 100%; height: 100%; background: #e9e9dc; border-radius: 50%; overflow: hidden; }
+.avatar-crop { width: 100%; height: 100%; background: #e9e9dc; border-radius: 50%; overflow: hidden; }
+.portrait-clip { position: absolute; }
+.avatar-crop.with-antennae { overflow: visible; }
 .turn-indicator { position: absolute; top: -3px; right: -3px; display: grid; place-items: center; width: 27px; height: 27px; color: var(--card); background: var(--green); border: 2px solid var(--card); border-radius: 50%; }
 .turn-indicator svg { width: 14px; height: 14px; fill: currentColor; }
 .player-info { grid-column: 2; grid-row: 1 / 3; display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 19px; letter-spacing: -.03em; white-space: nowrap; }

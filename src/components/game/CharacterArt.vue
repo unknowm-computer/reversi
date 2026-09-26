@@ -3,13 +3,12 @@ import GrasshopperHead from './GrasshopperHead.vue';
 import GrasshopperBattingRig from './GrasshopperBattingRig.vue';
 import ViolinArt from './ViolinArt.vue';
 import CharacterTaunt from './CharacterTaunt.vue';
-import TimeoutStrikeArm from './TimeoutStrikeArm.vue';
 import type { Character, Reaction } from '../../../shared/game/types';
-interface Props { character: Character; mood?: Reaction; decorative?: boolean; portrait?: boolean; still?: boolean; swing?: boolean; lariat?: boolean; toast?: boolean; bonk?: boolean; taunt?: boolean; pose?: 'normal' | 'plead' | 'consider' }
-withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: false, still: false, swing: false, lariat: false, toast: false, bonk: false, taunt: false, pose: 'normal' });
+interface Props { character: Character; mood?: Reaction; decorative?: boolean; portrait?: boolean; still?: boolean; swing?: boolean; lariat?: boolean; toast?: boolean; taunt?: boolean; pose?: 'normal' | 'plead' | 'consider' }
+withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: false, still: false, swing: false, lariat: false, toast: false, taunt: false, pose: 'normal' });
 </script>
 <template>
-  <svg class="character" :class="[character, `mood-${mood}`, `pose-${pose}`, { portrait, still, swing, lariat, bonk, taunt }]" :viewBox="portrait ? (character === 'jannabi' ? '26 0 168 168' : '33 0 148 148') : '0 0 220 230'" :aria-hidden="decorative" :role="decorative ? undefined : 'img'" :aria-label="decorative ? undefined : character === 'jannabi' ? '장난꾸러기 잔나비' : portrait ? '느긋한 베짱이' : '바이올린을 연주하는 베짱이'">
+  <svg class="character" :class="[character, `mood-${mood}`, `pose-${pose}`, { portrait, still, swing, lariat, taunt }]" :viewBox="portrait ? (character === 'jannabi' ? '26 0 168 168' : '33 0 148 148') : '0 0 220 230'" :aria-hidden="decorative" :role="decorative ? undefined : 'img'" :aria-label="decorative ? undefined : character === 'jannabi' ? '장난꾸러기 잔나비' : portrait ? '느긋한 베짱이' : '바이올린을 연주하는 베짱이'">
     <ellipse v-if="!portrait" cx="110" cy="210" rx="65" ry="9" fill="#203d2d" opacity=".1" />
     <g class="body">
       <g v-if="pose !== 'normal'" class="pose-limbs" stroke-linecap="round" stroke-linejoin="round">
@@ -43,7 +42,7 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
             <path d="M84 171q-7 11-11 23-10 0-11 8-1 9 16 9 14 0 18-10l10-22Z" />
             <path d="M119 180l8 21q4 10 19 10 16 0 15-9-1-8-11-8l-11-24Z" />
             <path v-if="!lariat && !taunt" class="left-arm" d="M84 126c-19-4-30 12-35 29-5 13-1 21 8 21 8 0 11-6 13-14l21-17" />
-            <g v-if="!lariat && !toast && !bonk && !taunt" class="right-arm">
+            <g v-if="!lariat && !toast && !taunt" class="right-arm">
               <path d="M137 126c15 8 25 14 34 2l13-22c5-9 14-8 18-2 4 6 0 12-4 18l-15 24c-12 17-30 18-49 3" />
               <path d="M184 91q-5 22 15 28 12-20 1-41-1 23-16 13Z" fill="#f2ca60" stroke="#98722b" stroke-width="2.5" />
               <path d="M190 98q0 10 7 14" fill="none" stroke="#ffe397" stroke-width="3" />
@@ -75,7 +74,6 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
           </template>
           <ellipse cx="110" cy="99" rx="7" ry="4" fill="#8e6249"/><ellipse cx="78" cy="99" rx="8" ry="6" fill="#db9b80" opacity=".7"/><ellipse cx="144" cy="99" rx="8" ry="6" fill="#db9b80" opacity=".7"/>
         </g>
-        <TimeoutStrikeArm v-if="bonk" :character="character" />
         <g v-if="toast" class="beer-toast" stroke-linejoin="round">
           <path d="M141 145q21 11 21-17" fill="none" stroke="#664832" stroke-width="12" stroke-linecap="round"/>
           <path d="M141 145q21 11 21-17" fill="none" stroke="#a8764e" stroke-width="7" stroke-linecap="round"/>
@@ -99,14 +97,14 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
             <ellipse cx="110" cy="155" rx="24" ry="29" fill="#d3dfa6" />
             <path d="M95 164q15 6 30 0m-26 11q11 4 22 0" fill="none" stroke="#b4c788" stroke-width="2" />
           </g>
-          <GrasshopperHead :mood="mood" :still="still || bonk" :taunt="taunt" :pose="pose" />
+          <GrasshopperHead :mood="mood" :still="still" :taunt="taunt" :pose="pose" />
           <path v-if="taunt" d="M106 122q-7 29 31 61" fill="none" stroke="#936036" stroke-width="2.5" />
           <ViolinArt :transform="taunt ? 'translate(35 20) rotate(18 115 154) scale(.85)' : 'rotate(-25 115 154)'" />
           <g v-if="!taunt" class="playing-arms" stroke-linecap="round" stroke-linejoin="round">
             <path d="M77 132q-19 15-1 24l26-6" fill="none" stroke="#496341" stroke-width="12" />
             <path d="M77 132q-19 15-1 24l26-6" fill="none" stroke="#aabc77" stroke-width="7" />
             <ellipse cx="103" cy="149" rx="7" ry="6" fill="#c8d997" stroke="#496341" stroke-width="2.5" />
-            <g v-if="!bonk" class="bow-arm">
+            <g class="bow-arm">
               <path d="M145 132q22 12 12 24l-13 6" fill="none" stroke="#496341" stroke-width="12" />
               <path d="M145 132q22 12 12 24l-13 6" fill="none" stroke="#aabc77" stroke-width="7" />
               <path d="m98 135 72 41" stroke="#6d5437" stroke-width="3.5" />
@@ -125,7 +123,6 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
             <ellipse cx="104" cy="151" rx="7" ry="6" fill="#c8d997" stroke="#496341" stroke-width="2.5" />
             <ellipse cx="142" cy="111" rx="7" ry="6" fill="#c8d997" stroke="#496341" stroke-width="2.5" />
           </g>
-          <TimeoutStrikeArm v-if="bonk" :character="character" />
         </template>
       </template>
       <CharacterTaunt v-if="taunt" :character="character" />
@@ -192,8 +189,6 @@ ellipse.pose-belly { stroke: none; }
 .character.still :is(.eyes, .tail, .bow-arm, .clasped-hands, .whistle-note) { animation: none; }
 .character.still.pose-plead .head { transform: translateY(22px) scale(.88); }
 .character:is(.swing, .lariat) .body { animation: none; }
-.character.bonk :is(.body, .head, .eyes, .tail) { animation: none; transform: none; }
-.character.still :deep(.strike-arm *) { animation: none; }
 .character.taunt .body { animation: teasing-sway var(--taunt-duration, 1400ms) ease-in-out both; }
 .character.taunt :is(.head, .eyes, .tail) { animation: none; transform: none; }
 .character.taunt.still .body { animation: none; transform: none; }

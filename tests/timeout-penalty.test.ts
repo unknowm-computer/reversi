@@ -3,9 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { useTimeoutPenalty } from '../src/composables/useTimeoutPenalty';
-import { TIMEOUT_PENALTY_HIT_MS, TIMEOUT_PENALTY_MS } from '../shared/game/types';
+import CharacterArt from '../src/components/game/CharacterArt.vue';
+import TimeoutPenalty from '../src/components/game/TimeoutPenalty.vue';
+import { characterName, otherCharacter, TIMEOUT_PENALTY_HIT_MS, TIMEOUT_PENALTY_MS, type Character } from '../shared/game/types';
 
 let wrapper: VueWrapper;
+let scene: VueWrapper | undefined;
 let penalty: ReturnType<typeof useTimeoutPenalty>;
 const complete = vi.fn(), hit = vi.fn();
 
@@ -16,7 +19,48 @@ beforeEach(() => {
     return () => null;
   } }));
 });
-afterEach(() => { wrapper.unmount(); vi.useRealTimers(); });
+afterEach(() => { scene?.unmount(); scene = undefined; wrapper.unmount(); vi.useRealTimers(); });
+
+describe('Shared timeout bonk scene', () => {
+  const recipients: Character[] = ['jannabi', 'grasshopper'];
+
+  it.each(recipients)('shows only the %s recipient with the same bonk message', recipient => {
+    scene = mount(TimeoutPenalty, { props: { recipient, paused: false } });
+
+    const characters = scene.findAllComponents(CharacterArt);
+    expect(characters).toHaveLength(1);
+    expect(characters[0]!.props('character')).toBe(recipient);
+    expect(scene.find('.giver, .strike-arm, .tap-bow').exists()).toBe(false);
+    expect(scene.get('strong').text()).toBe('꿀밤 한 대, 다시 집중!');
+    expect(scene.text()).not.toContain('활로');
+
+    const announcement = scene.get('[role="status"]').attributes('aria-label');
+    expect(announcement).toContain(characterName(recipient));
+    expect(announcement).toContain('꿀밤');
+    expect(announcement).not.toContain(characterName(otherCharacter(recipient)));
+    expect(announcement).not.toContain('활로');
+  });
+
+  it.each(recipients)('preserves the shared animation offset while pausing and resuming %s', async recipient => {
+    scene = mount(TimeoutPenalty, { props: { recipient, paused: true, elapsed: 500 } });
+    const status = scene.get('[role="status"]');
+    const element = status.element as HTMLElement;
+
+    expect(status.classes()).toContain('paused');
+    expect(element.style.getPropertyValue('--penalty-delay')).toBe('-500ms');
+    expect(element.style.getPropertyValue('--penalty-duration')).toBe(`${TIMEOUT_PENALTY_MS}ms`);
+
+    await scene.setProps({ paused: false });
+    expect(status.classes()).not.toContain('paused');
+    expect(element.style.getPropertyValue('--penalty-delay')).toBe('-500ms');
+
+    await scene.setProps({ elapsed: TIMEOUT_PENALTY_HIT_MS, paused: true });
+    expect(status.classes()).toContain('paused');
+    expect(element.style.getPropertyValue('--penalty-delay')).toBe(`-${TIMEOUT_PENALTY_HIT_MS}ms`);
+    expect(scene.findAllComponents(CharacterArt)).toHaveLength(1);
+    expect(scene.findComponent(CharacterArt).props('character')).toBe(recipient);
+  });
+});
 
 describe('Timeout penalty impact timing', () => {
   it('hits once at contact and completes after the full animation', () => {
