@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import GrasshopperHead from './GrasshopperHead.vue';
+import GrasshopperBattingRig from './GrasshopperBattingRig.vue';
 import ViolinArt from './ViolinArt.vue';
 import CharacterTaunt from './CharacterTaunt.vue';
 import TimeoutStrikeArm from './TimeoutStrikeArm.vue';
@@ -85,73 +87,46 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
         </g>
       </template>
       <template v-else>
-        <g class="normal-limbs" stroke-linecap="round" stroke-linejoin="round">
-          <g fill="#aabc77" stroke="#496341" stroke-width="3">
-            <path d="M86 171q-11 9-18 24l-14 3q-9 2-7 8 2 6 14 3l17-5 24-24Z" />
-            <path d="m123 180 19 23 18 6q12 3 14-3 2-6-7-8l-15-4-14-25Z" />
+        <GrasshopperBattingRig v-if="swing" />
+        <template v-else>
+          <g class="normal-limbs" stroke-linecap="round" stroke-linejoin="round">
+            <g fill="#aabc77" stroke="#496341" stroke-width="3">
+              <path d="M86 171q-11 9-18 24l-14 3q-9 2-7 8 2 6 14 3l17-5 24-24Z" />
+              <path d="m123 180 19 23 18 6q12 3 14-3 2-6-7-8l-15-4-14-25Z" />
+            </g>
+            <path d="M88 119q-26 1-27 28-1 27 31 31m40-59q26 1 27 28 1 27-31 31" fill="#c4d494" stroke="#6d854e" stroke-width="2.5" />
+            <path d="M84 115c-10 14-15 32-11 48 4 18 18 29 37 29s33-11 37-29c4-16-1-34-11-48Z" fill="#9eb76c" stroke="#496341" stroke-width="3" />
+            <ellipse cx="110" cy="155" rx="24" ry="29" fill="#d3dfa6" />
+            <path d="M95 164q15 6 30 0m-26 11q11 4 22 0" fill="none" stroke="#b4c788" stroke-width="2" />
           </g>
-          <path d="M88 119q-26 1-27 28-1 27 31 31m40-59q26 1 27 28 1 27-31 31" fill="#c4d494" stroke="#6d854e" stroke-width="2.5" />
-          <path d="M84 115c-10 14-15 32-11 48 4 18 18 29 37 29s33-11 37-29c4-16-1-34-11-48Z" fill="#9eb76c" stroke="#496341" stroke-width="3" />
-          <ellipse cx="110" cy="155" rx="24" ry="29" fill="#d3dfa6" />
-          <path d="M95 164q15 6 30 0m-26 11q11 4 22 0" fill="none" stroke="#b4c788" stroke-width="2" />
-        </g>
-        <g class="head">
-          <g class="antennae"><path class="antenna" d="M88 55Q65 7 45 24m78 26q12-45 39-32" fill="none" stroke="#496341" stroke-width="4" stroke-linecap="round"/>
-          <circle cx="44" cy="23" r="5" fill="#496341"/><circle cx="162" cy="18" r="5" fill="#496341"/></g>
-          <path d="M59 76q-5-34 39-40 60-9 70 34 11 40-43 52-57 10-66-46" fill="#aabc77" stroke="#496341" stroke-width="3"/>
-          <ellipse cx="89" cy="67" rx="16" ry="19" fill="#f6f2d5"/><ellipse cx="136" cy="65" rx="16" ry="19" fill="#f6f2d5"/>
-          <g class="eyes"><ellipse cx="94" cy="71" rx="4.5" ry="6.5" fill="#304634"/><ellipse cx="140" cy="69" rx="4.5" ry="6.5" fill="#304634"/><g fill="#fffdf0"><circle cx="95" cy="69" r="1.5"/><circle cx="141" cy="67" r="1.5"/></g></g>
-          <template v-if="!taunt">
-          <g v-if="still && mood === 'win'" class="big-smile"><path d="M82 73q11-16 22 0m25-2q11-16 22 0" fill="none" stroke="#496341" stroke-width="4" stroke-linecap="round"/><path d="M94 96q21 38 43-5Z" fill="#654633" stroke="#496341" stroke-width="3"/><path d="M102 99q13 3 26-2" stroke="#fff8df" stroke-width="6"/></g>
-          <path v-else-if="pose === 'plead'" d="M101 101q12-6 23 0" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round"/>
-          <g v-else-if="mood === 'whistle'"><path d="M96 96q10 14 22 1" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round"/><ellipse cx="127" cy="97" rx="5" ry="4" fill="#496341"/><text class="whistle-note" x="159" y="75" fill="#496341" font-size="28">♪</text></g>
-          <g v-else-if="mood === 'annoyed'"><path d="m82 58 18 4m28-2 17-5M101 104q13-7 26-2" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round" /></g>
-          <path v-else-if="['sad','lose','urgent'].includes(mood)" d="M98 104q15-13 28-2" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round"/>
-          <path v-else d="M96 96q17 17 35-3" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round"/>
-          </template>
-          <ellipse cx="77" cy="92" rx="9" ry="5" fill="#d6a184" opacity=".65"/><ellipse cx="148" cy="89" rx="9" ry="5" fill="#d6a184" opacity=".65"/>
-          <path d="m80 45 10-4m38-4 12 4" stroke="#496341" stroke-width="3" stroke-linecap="round"/>
-        </g>
-        <path v-if="taunt" d="M106 122q-7 29 31 61" fill="none" stroke="#936036" stroke-width="2.5" />
-        <ViolinArt v-if="!swing" :transform="taunt ? 'translate(35 20) rotate(18 115 154) scale(.85)' : 'rotate(-25 115 154)'" />
-        <g v-if="!swing && !taunt" class="playing-arms" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M77 132q-19 15-1 24l26-6" fill="none" stroke="#496341" stroke-width="12" />
-          <path d="M77 132q-19 15-1 24l26-6" fill="none" stroke="#aabc77" stroke-width="7" />
-          <ellipse cx="103" cy="149" rx="7" ry="6" fill="#c8d997" stroke="#496341" stroke-width="2.5" />
-          <g v-if="!bonk" class="bow-arm">
-            <path d="M145 132q22 12 12 24l-13 6" fill="none" stroke="#496341" stroke-width="12" />
-            <path d="M145 132q22 12 12 24l-13 6" fill="none" stroke="#aabc77" stroke-width="7" />
-            <path d="m98 135 72 41" stroke="#6d5437" stroke-width="3.5" />
-            <path d="m98 140 69 40" stroke="#ead8a7" stroke-width="1.5" />
-            <ellipse cx="146" cy="163" rx="7" ry="6" fill="#c8d997" stroke="#496341" stroke-width="2.5" />
+          <GrasshopperHead :mood="mood" :still="still || bonk" :taunt="taunt" :pose="pose" />
+          <path v-if="taunt" d="M106 122q-7 29 31 61" fill="none" stroke="#936036" stroke-width="2.5" />
+          <ViolinArt :transform="taunt ? 'translate(35 20) rotate(18 115 154) scale(.85)' : 'rotate(-25 115 154)'" />
+          <g v-if="!taunt" class="playing-arms" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M77 132q-19 15-1 24l26-6" fill="none" stroke="#496341" stroke-width="12" />
+            <path d="M77 132q-19 15-1 24l26-6" fill="none" stroke="#aabc77" stroke-width="7" />
+            <ellipse cx="103" cy="149" rx="7" ry="6" fill="#c8d997" stroke="#496341" stroke-width="2.5" />
+            <g v-if="!bonk" class="bow-arm">
+              <path d="M145 132q22 12 12 24l-13 6" fill="none" stroke="#496341" stroke-width="12" />
+              <path d="M145 132q22 12 12 24l-13 6" fill="none" stroke="#aabc77" stroke-width="7" />
+              <path d="m98 135 72 41" stroke="#6d5437" stroke-width="3.5" />
+              <path d="m98 140 69 40" stroke="#ead8a7" stroke-width="1.5" />
+              <ellipse cx="146" cy="163" rx="7" ry="6" fill="#c8d997" stroke="#496341" stroke-width="2.5" />
+            </g>
           </g>
-        </g>
-        <g class="bow-tie" stroke="#936036" stroke-width="2" stroke-linejoin="round">
-          <path d="M110 123q-8-8-15-5l1 13q8 2 14-4 6 6 14 4l1-13q-7-3-15 5Z" fill="#d49a55" />
-          <circle cx="110" cy="125" r="3.5" fill="#edbd77" />
-        </g>
-        <g v-if="pose === 'consider'" class="consider-instrument" stroke-linecap="round" stroke-linejoin="round">
-          <ViolinArt transform="rotate(-20 115 154)" />
-          <path d="M78 133q-16 17 0 25l26-7m40-16q21 8 16-10l-16-14" fill="none" stroke="#496341" stroke-width="12" />
-          <path d="M78 133q-16 17 0 25l26-7m40-16q21 8 16-10l-16-14" fill="none" stroke="#aabc77" stroke-width="7" />
-          <ellipse cx="104" cy="151" rx="7" ry="6" fill="#c8d997" stroke="#496341" stroke-width="2.5" />
-          <ellipse cx="142" cy="111" rx="7" ry="6" fill="#c8d997" stroke="#496341" stroke-width="2.5" />
-        </g>
-        <TimeoutStrikeArm v-if="bonk" :character="character" />
-        <g v-if="swing" stroke-linecap="round">
-          <path d="M78 131q-15 19 11 27" fill="none" stroke="#496341" stroke-width="12" />
-          <path d="M78 131q-15 19 11 27" fill="none" stroke="#aabc77" stroke-width="7" />
-        </g>
-        <g v-if="swing" class="victory-swing">
-          <path d="M143 127q18 9 28-12" fill="none" stroke="#496341" stroke-width="12" stroke-linecap="round"/>
-          <path d="M143 127q18 9 28-12" fill="none" stroke="#aabc77" stroke-width="7" stroke-linecap="round"/>
-          <g transform="translate(170 115) rotate(20)">
-            <path d="M-4 0v-31h8V0" fill="#68482f" stroke="#493e2d" stroke-width="3"/>
-            <path d="M0-85q-24 0-20 20 10 8 0 15-13 25 20 27 33-2 20-27-10-7 0-15 4-20-20-20Z" fill="#b97942" stroke="#694931" stroke-width="4"/>
-            <path d="M0-78v71m-12-49 2 10m22-10-2 10" stroke="#ead8a7" stroke-width="2"/>
+          <g class="bow-tie" stroke="#936036" stroke-width="2" stroke-linejoin="round">
+            <path d="M110 123q-8-8-15-5l1 13q8 2 14-4 6 6 14 4l1-13q-7-3-15 5Z" fill="#d49a55" />
+            <circle cx="110" cy="125" r="3.5" fill="#edbd77" />
           </g>
-          <circle cx="169" cy="114" r="7" fill="#aabc77" stroke="#496341" stroke-width="3"/>
-        </g>
+          <g v-if="pose === 'consider'" class="consider-instrument" stroke-linecap="round" stroke-linejoin="round">
+            <ViolinArt transform="rotate(-20 115 154)" />
+            <path d="M78 133q-16 17 0 25l26-7m40-16q21 8 16-10l-16-14" fill="none" stroke="#496341" stroke-width="12" />
+            <path d="M78 133q-16 17 0 25l26-7m40-16q21 8 16-10l-16-14" fill="none" stroke="#aabc77" stroke-width="7" />
+            <ellipse cx="104" cy="151" rx="7" ry="6" fill="#c8d997" stroke="#496341" stroke-width="2.5" />
+            <ellipse cx="142" cy="111" rx="7" ry="6" fill="#c8d997" stroke="#496341" stroke-width="2.5" />
+          </g>
+          <TimeoutStrikeArm v-if="bonk" :character="character" />
+        </template>
       </template>
       <CharacterTaunt v-if="taunt" :character="character" />
     </g>
@@ -182,8 +157,6 @@ ellipse.pose-belly { stroke: none; }
 .still.mood-win .eyes { display: none; }
 .lariat .body { animation: none; }
 .swing .body { animation: none; }
-.victory-swing { transform-origin: 143px 127px; animation: violin-strike 3.2s both; }
-@keyframes violin-strike { 0% { transform: rotate(15deg); } 24%, 34% { transform: rotate(-100deg); } 42%, 52% { transform: rotate(100deg); } 70%, 100% { transform: rotate(15deg); } }
 .portrait .body { transform-origin: 110px 80px; }
 .mood-sly .head { animation: chuckle .38s ease-in-out infinite alternate; }
 .mood-sly .eyes { transform: scaleY(.6); transform-origin: 110px 82px; }
@@ -211,21 +184,18 @@ ellipse.pose-belly { stroke: none; }
 @keyframes shrug { to { transform: translateY(-6px) scaleY(.97); } }
 .character.still .body, .character.still .head, .character.still .right-arm, .character.still .sparkles { animation: none; transform: none; }
 .mood-idle .eyes { transform-box: fill-box; transform-origin: center; animation: blink 5.6s ease-in-out infinite; }
-.grasshopper.mood-idle .eyes { animation-delay: 1.8s; }
 .tail { transform-origin: 143px 166px; animation: tail-sway 4.8s ease-in-out infinite; }
-.antennae { transform-origin: 110px 50px; animation: antenna-sway 3.6s ease-in-out infinite; }
 .mood-idle.pose-normal .bow-arm { transform-origin: 145px 132px; animation: play-violin 2.4s ease-in-out infinite; }
 @keyframes blink { 0%, 43%, 47%, 100% { transform: scaleY(1); } 45% { transform: scaleY(.12); } }
 @keyframes tail-sway { 50% { transform: rotate(5deg); } }
-@keyframes antenna-sway { 50% { transform: rotate(3deg); } }
 @keyframes play-violin { 50% { transform: rotate(-4deg); } }
-.character.still :is(.eyes, .tail, .antennae, .bow-arm, .clasped-hands, .victory-swing, .whistle-note) { animation: none; }
+.character.still :is(.eyes, .tail, .bow-arm, .clasped-hands, .whistle-note) { animation: none; }
 .character.still.pose-plead .head { transform: translateY(22px) scale(.88); }
 .character:is(.swing, .lariat) .body { animation: none; }
-.character.bonk :is(.body, .head, .eyes, .tail, .antennae) { animation: none; transform: none; }
+.character.bonk :is(.body, .head, .eyes, .tail) { animation: none; transform: none; }
 .character.still :deep(.strike-arm *) { animation: none; }
 .character.taunt .body { animation: teasing-sway var(--taunt-duration, 1400ms) ease-in-out both; }
-.character.taunt :is(.head, .eyes, .tail, .antennae) { animation: none; transform: none; }
+.character.taunt :is(.head, .eyes, .tail) { animation: none; transform: none; }
 .character.taunt.still .body { animation: none; transform: none; }
 .character.still :deep(.character-taunt *) { animation: none; }
 @keyframes teasing-sway { 0% { transform: rotate(-3deg); } 28% { transform: translateY(-3px) rotate(4deg); } 52% { transform: rotate(-4deg); } 76%, 100% { transform: rotate(2deg); } }
