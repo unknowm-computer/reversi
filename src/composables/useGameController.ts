@@ -8,7 +8,7 @@ import { useMoveImpact, IMPACT_MS } from './useMoveImpact';
 import { useTimeoutPenalty } from './useTimeoutPenalty';
 import { useGameHint } from './useGameHint';
 import { legalMoves, opposite } from '../../shared/game/rules';
-import { characterName, otherCharacter, TURN_WARNING_MS, type Color, type GameSettings, type GameState, type Reaction } from '../../shared/game/types';
+import { characterName, otherCharacter, DEFAULT_AI_DIFFICULTY, TURN_WARNING_MS, type Color, type GameSettings, type GameState, type Reaction } from '../../shared/game/types';
 export function useGameController() {
   const store = useGameStore();
   const screen = ref<'setup' | 'lobby' | 'game'>('setup');
@@ -78,7 +78,7 @@ export function useGameController() {
     if (timeoutDecider.value) return `${name(timeoutDecider.value)}의 선택을 기다리고 있어요. 대국 시간은 멈춰 있어요.`;
     if (penalty.recipient.value) return `${name(penalty.recipient.value)}, 꿀밤 한 대! 같은 차례로 계속해요.`;
     if (animating.value) return '돌을 뒤집고 있어요…';
-    if (thinking.value) return '잔나비가 한 수를 고민하고 있어요…';
+    if (thinking.value) return `${name('white')}가 한 수를 고민하고 있어요…`;
     if (reaction.until.value > clock.value && reaction.message.value) return reaction.message.value;
     if (store.settings.mode === 'ai') return '당신의 차례예요. 초록 점에 돌을 놓아보세요.';
     return `${name(store.state.turn)} · ${store.state.turn === 'black' ? '흑' : '백'}의 차례예요.`;
@@ -110,7 +110,7 @@ export function useGameController() {
       worker?.terminate(); worker = null; thinking.value = false;
       const fallback = available.value[0]; if (fallback !== undefined && !paused.value) commit(fallback);
     };
-    worker.postMessage(JSON.parse(JSON.stringify(store.state)) as GameState);
+    worker.postMessage({ ...(JSON.parse(JSON.stringify(store.state)) as GameState), difficulty: store.settings.aiDifficulty ?? DEFAULT_AI_DIFFICULTY });
   }
   function nextTurn(): void { pendingTurn = false; animating.value = false; timer.start(store.settings.seconds * 1000); startAi(); }
   function commit(index: number): void {
@@ -133,7 +133,7 @@ export function useGameController() {
   function start(settings: GameSettings): void {
     localTimeout.value = null; remotePenaltyKey = null;
     cancelWork(); penalty.cancel(); pendingTurn = false; audio.reset(); reaction.reset();
-    store.start({ ...settings, blackCharacter: settings.mode === 'ai' ? 'grasshopper' : settings.blackCharacter });
+    store.start({ ...settings, aiDifficulty: settings.aiDifficulty ?? DEFAULT_AI_DIFFICULTY });
     screen.value = 'game'; warnedHalf = false; lastCountdownSecond = null; paused.value = document.hidden;
     timer.start(settings.seconds * 1000); if (paused.value) timer.pause();
     void audio.unlock(); audio.sfx('button');
@@ -169,6 +169,7 @@ export function useGameController() {
     localTimeout.value = null; cancelWork(); penalty.cancel(); pendingTurn = false; timer.stop(); audio.reset(); store.active = false; screen.value = 'setup'; reaction.reset();
   }
   function rematch(): void {
+    if (screen.value !== 'game' || !store.state.result) return;
     if (store.settings.mode === 'online') online.gameCommand('rematch', store.state); else start(store.settings);
   }
   function visibility(): void {

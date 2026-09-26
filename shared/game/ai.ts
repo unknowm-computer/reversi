@@ -1,5 +1,5 @@
 import { applyMove, legalMoves, opposite, score } from './rules.js';
-import type { Color, GameState } from './types.js';
+import type { AiDifficulty, Color, GameState } from './types.js';
 const CORNERS = [0, 7, 56, 63];
 const ADJACENT = [[1, 8, 9], [6, 14, 15], [48, 49, 57], [54, 55, 62]];
 function evaluate(state: GameState, color: Color): number {
@@ -15,7 +15,7 @@ function evaluate(state: GameState, color: Color): number {
   });
   return value;
 }
-export function chooseMove(state: GameState, budgetMs = 600): number | null {
+export function chooseMove(state: GameState, budgetMs = 600, maxDepth = 6): number | null {
   const moves = legalMoves(state.board, state.turn);
   if (!moves.length || state.result) return null;
   const deadline = performance.now() + budgetMs;
@@ -38,7 +38,7 @@ export function chooseMove(state: GameState, budgetMs = 600): number | null {
     return value;
   }
   let best = moves[0];
-  for (let depth = 1; depth <= 6; depth++) {
+  for (let depth = 1; depth <= maxDepth; depth++) {
     let candidate = best, value = -Infinity;
     try {
       for (const move of [best, ...moves.filter(move => move !== best)]) {
@@ -51,4 +51,19 @@ export function chooseMove(state: GameState, budgetMs = 600): number | null {
     } catch (error: unknown) { if (error !== timedOut) throw error; break; }
   }
   return best;
+}
+
+export function chooseDifficultyMove(state: GameState, difficulty: AiDifficulty): number | null {
+  if (difficulty === 1) {
+    const moves = legalMoves(state.board, state.turn);
+    return state.result || !moves.length ? null : moves[Math.floor(Math.random() * moves.length)];
+  }
+  const levels = {
+    2: { depth: 1, budgetMs: 100 },
+    3: { depth: 2, budgetMs: 200 },
+    4: { depth: 4, budgetMs: 400 },
+    5: { depth: 6, budgetMs: 600 },
+  } as const;
+  const level = levels[difficulty];
+  return chooseMove(state, level.budgetMs, level.depth);
 }

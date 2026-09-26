@@ -57,6 +57,27 @@ describe('Solo hint integration', () => {
   });
 });
 describe('Controller lifecycle', () => {
+  it.each([1, 2, 3, 4, 5] as const)('keeps a chosen solo character and sends difficulty %s to the AI', difficulty => {
+    controller.start({ ...DEFAULT_SETTINGS, blackCharacter: 'jannabi', aiDifficulty: difficulty });
+    expect(controller.store.settings.blackCharacter).toBe('jannabi');
+    expect(controller.name('white')).toBe('베짱이');
+    controller.move(19); vi.advanceTimersByTime(500);
+    expect(FakeWorker.instances[0].request).toMatchObject({ difficulty, turn: 'white' });
+    expect(controller.status.value).toBe('베짱이가 한 수를 고민하고 있어요…');
+    controller.finish('black', 'resign');
+    const previousGameId = controller.store.state.gameId;
+    controller.rematch();
+    expect(controller.store.state.gameId).not.toBe(previousGameId);
+    expect(controller.store.settings).toMatchObject({ blackCharacter: 'jannabi', aiDifficulty: difficulty });
+    expect(controller.store.state.result).toBeNull();
+    expect(controller.store.state.revision).toBe(0);
+    expect(controller.store.history).toHaveLength(0);
+    expect(controller.timer.remaining.value).toBe(30000);
+    expect(controller.canHint.value).toBe(true);
+    FakeWorker.instances[0].reply(18);
+    expect(controller.store.state.revision).toBe(0);
+  });
+
   it('celebrates corners on the player card without delaying the flip', () => {
     controller.start({ ...DEFAULT_SETTINGS, seconds: 30 });
     controller.store.state.board[1] = 'white'; controller.store.state.board[2] = 'black';

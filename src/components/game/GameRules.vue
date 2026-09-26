@@ -27,7 +27,9 @@ const emit = defineEmits<{ (event: 'close'): void }>();
     </section>
     <section aria-labelledby="hint-help-title">
       <h3 id="hint-help-title">혼자 놀기 힌트</h3>
+      <p>혼자 놀기는 원하는 캐릭터와 1~5단계 난이도를 고를 수 있어요. 선택한 캐릭터가 흑돌로 먼저 시작하고, 다른 캐릭터가 AI를 맡아요.</p>
       <p>내 차례에 프로필의 전구 모양 힌트 버튼을 누르면 추천 칸에 금색 전구가 나타나요. 횟수 제한 없이 사용할 수 있으며, 돌은 직접 놓으세요. 힌트를 보는 동안에도 제한 시간은 계속 흘러요.</p>
+      <p>게임이 끝나면 상단의 처음으로 옆에 다시하기가 나타나요. 같은 설정으로 바로 새 판을 시작하며, 온라인은 두 사람 모두 동의해야 시작돼요.</p>
     </section>
     <section aria-labelledby="undo-help-title">
       <h3 id="undo-help-title">무르기와 기권</h3>

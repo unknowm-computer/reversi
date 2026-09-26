@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useGameController } from './composables/useGameController';
-import { otherCharacter, type Character, type Color } from '../shared/game/types';
+import { DEFAULT_AI_DIFFICULTY, otherCharacter, type Character, type Color } from '../shared/game/types';
 import SetupPanel from './components/game/SetupPanel.vue';
 import VictoryScene from './components/game/VictoryScene.vue';
 import MoveImpact from './components/game/MoveImpact.vue';
@@ -26,6 +26,8 @@ const isLocal = computed<boolean>(() => store.settings.mode === 'local');
 const isAskingMercy = computed<boolean>(() => store.settings.mode === 'ai' && game.timeoutLoser.value === myColor.value);
 const canResign = computed<boolean>(() => !store.state.result && !game.timeoutPending.value);
 const modeName = computed(() => ({ ai: '혼자 놀기', local: '함께 놀기', online: '온라인 대전' })[store.settings.mode]);
+const rematchRequested = computed<boolean>(() => store.settings.mode === 'online' && Boolean(online.room.value?.players.find(player => player.color === myColor.value)?.rematch));
+const rematchDisabled = computed<boolean>(() => store.settings.mode === 'online' && (rematchRequested.value || game.decisionBlocked.value));
 const percentBlack = computed(() => store.counts.black / (64 - store.counts.empty) * 100);
 const victoryPlayed = ref(false);
 const victoryPending = computed(() => screen.value === 'game' && Boolean(store.state.result?.winner) && !victoryPlayed.value);
@@ -59,14 +61,14 @@ function confirm(): void {
 </script>
 <template>
   <div class="app-shell" @pointerdown.once="audio.unlock()" @keydown.once="audio.unlock()">
-    <header class="site-header"><button class="brand" aria-label="잔나비와 베짱이 시작 화면" @click="requestHome"><span class="brand-mark"><i /><i /></span><span class="brand-name">잔나비와 베짱이<small>THE LITTLE REVERSI CLUB</small></span></button><nav aria-label="게임 안내"><button v-if="screen !== 'setup'" class="text-button nav-link" aria-label="처음으로" title="처음으로" @click="requestHome"><AppIcon name="home" /><span>처음으로</span></button><button class="text-button nav-link" aria-label="게임 방법" @click="modal = 'rules'"><AppIcon name="help" /><span>게임 방법</span></button><span class="nav-divider" /><button class="sound-button" :aria-label="audio.enabled.value ? '사운드 끄기' : '사운드 켜기'" :aria-pressed="audio.enabled.value" @click="audio.toggle()"><AppIcon :name="audio.enabled.value ? 'sound' : 'muted'" /></button></nav></header>
+    <header class="site-header"><button class="brand" aria-label="잔나비와 베짱이 시작 화면" @click="requestHome"><span class="brand-mark"><i /><i /></span><span class="brand-name">잔나비와 베짱이<small>THE LITTLE REVERSI CLUB</small></span></button><nav aria-label="게임 안내"><button v-if="screen !== 'setup'" class="text-button nav-link" aria-label="처음으로" title="처음으로" @click="requestHome"><AppIcon name="home" /><span>처음으로</span></button><button v-if="screen === 'game' && store.state.result" class="text-button nav-link restart-button" :aria-label="rematchRequested ? '상대의 재대결 동의를 기다리는 중' : '다시하기'" :title="rematchRequested ? '상대의 재대결 동의를 기다리는 중' : '같은 설정으로 다시하기'" :disabled="rematchDisabled" @click="game.rematch"><AppIcon name="restart" /><span>{{ rematchRequested ? '상대 대기 중' : '다시하기' }}</span></button><button class="text-button nav-link" aria-label="게임 방법" @click="modal = 'rules'"><AppIcon name="help" /><span>게임 방법</span></button><span class="nav-divider" /><button class="sound-button" :aria-label="audio.enabled.value ? '사운드 끄기' : '사운드 켜기'" :aria-pressed="audio.enabled.value" @click="audio.toggle()"><AppIcon :name="audio.enabled.value ? 'sound' : 'muted'" /></button></nav></header>
     <main>
       <SetupPanel v-if="screen === 'setup'" :connected="online.connected.value" :busy="online.busy.value" :error="online.error.value" @start="game.start" @online="online.connect" @create="config => online.enter('create', config)" @join="(config, code) => online.enter('join', config, code)" />
       <OnlineLobby v-else-if="screen === 'lobby' && online.room.value" :room="online.room.value" :color="online.color.value" :busy="online.busy.value" :connected="online.connected.value" :error="online.error.value" @ready="online.ready" @character="online.chooseCharacter" @leave="requestHome" />
       <section v-else-if="screen === 'game'" class="game-layout">
         <aside class="game-story"><p class="eyebrow muted">{{ modeName }}<span v-if="online.room.value && store.settings.mode === 'online'"> · {{ online.room.value.code }}</span></p><h1>작은 한 수가<br>판을 바꾸니까.</h1><p>서두르지 않아도 괜찮아요.<br>다음 한 수를 즐겨보세요.</p><div class="story-divider" /><div class="match-info"><span>오늘의 규칙</span><strong>{{ store.settings.seconds ? `한 수에 ${store.settings.seconds}초` : '시간 제한 없이, 여유롭게' }}</strong></div><button class="text-button story-help" @click="modal = 'rules'">처음이라면, 게임 방법<AppIcon name="arrow" /></button><div class="story-quote">“끝날 때까지<br>끝난 게 아니지!”<span>— 잔나비, 언제나 자신 있게</span></div></aside>
         <div class="play-area">
-          <div class="game-topline"><span class="eyebrow">{{ modeName }}</span><span>{{ store.state.revision === 0 ? '새로운 한 판' : `${64 - store.counts.empty} / 64` }}</span></div>
+          <div class="game-topline"><span class="eyebrow">{{ modeName }}<template v-if="store.settings.mode === 'ai'"> · {{ store.settings.aiDifficulty ?? DEFAULT_AI_DIFFICULTY }}단계</template></span><span>{{ store.state.revision === 0 ? '새로운 한 판' : `${64 - store.counts.empty} / 64` }}</span></div>
           <PlayerPanel
             :character="character(top)" :color="top" :count="store.counts[top]" :active="!store.state.result && store.state.turn === top"
             :mood="game.mood(top)" :remaining="timer.remaining.value" :seconds="store.settings.seconds" :undo-count="undoCount(top)"
@@ -113,7 +115,7 @@ function confirm(): void {
     </ModalDialog>
     <ModalDialog v-else-if="modal === 'rules'" title="한 판이면 익숙해져요." @close="modal = null"><GameRules @close="modal = null" /></ModalDialog>
     <ModalDialog v-else-if="modal === 'resign' || modal === 'home'" :title="modal === 'resign' ? '이번 판은 여기까지 할까요?' : '처음으로 돌아갈까요?'" @close="modal = null"><p class="confirm-text">{{ modal === 'resign' ? `${game.name(resigningColor)}의 기권으로 대국이 끝나요.` : store.settings.mode === 'online' || screen === 'lobby' ? '방을 나가면 친구와의 대국도 종료돼요.' : '진행 중인 대국은 저장되지 않아요.' }}</p><div class="confirm-actions"><button class="secondary" @click="modal = null">계속하기</button><button class="primary" @click="confirm">{{ modal === 'resign' ? '기권하기' : '돌아가기' }}</button></div></ModalDialog>
-    <ModalDialog v-else-if="resultVisible" title="오늘의 한 판" @close="resultDismissed = true"><ResultPanel :game="store.state" :black-character="store.settings.blackCharacter" :can-undo="store.canUndo" :online="store.settings.mode === 'online'" :requested="Boolean(online.room.value?.players.find(p => p.color === myColor)?.rematch)" :busy="online.busy.value" @rematch="game.rematch" @home="game.home" @undo="game.undo" /></ModalDialog>
+    <ModalDialog v-else-if="resultVisible" title="오늘의 한 판" @close="resultDismissed = true"><ResultPanel :game="store.state" :black-character="store.settings.blackCharacter" :can-undo="store.canUndo" :online="store.settings.mode === 'online'" :requested="rematchRequested" :busy="online.busy.value" @rematch="game.rematch" @home="game.home" @undo="game.undo" /></ModalDialog>
   </div>
 </template>
 <style scoped lang="scss">
@@ -129,4 +131,5 @@ function confirm(): void {
 .confirm-text { color: var(--muted); font-size: var(--text-body); line-height: 1.8; }.confirm-actions { display: flex; gap: 10px; margin-top: 25px; }.confirm-actions button { flex: 1; font-size: var(--text-label); }
 @media (max-width: $compact) { .app-shell { padding: 0 28px; }.game-layout { grid-template-columns: minmax(130px, 1fr) minmax(320px, 500px); gap: 28px; }.match-sidebar { display: none; } }
 @media (max-width: $mobile) { .app-shell { padding: 0 18px; }.site-header { height: 80px; }.brand-name { font-size: var(--text-body); }.brand-name small { font-size: var(--text-micro); }.brand-mark { width: 31px; }.brand { gap: 10px; }nav { gap: 9px; }.nav-divider { display: none; }.nav-link { padding: 8px; }.nav-link span { display: none; }.sound-button { width: 32px; height: 32px; }.site-footer { margin-top: 24px; font-size: var(--text-caption); }.footer-mark { font-size: var(--text-micro); letter-spacing: .04em; }.game-layout { grid-template-columns: minmax(0, 1fr); padding: 22px 0 15px; max-width: 500px; margin: auto; }.game-story { display: none; }.game-topline { margin-bottom: 12px; } }
+@media (max-width: $mobile) { .site-header:has(.restart-button) .brand-mark, .site-header:has(.restart-button) .brand-name small { display: none; } }
 </style>

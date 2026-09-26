@@ -7,6 +7,7 @@ import App from '../src/App.vue';
 import ModalDialog from '../src/components/common/ModalDialog.vue';
 import PlayerPanel from '../src/components/game/PlayerPanel.vue';
 import SetupPanel from '../src/components/game/SetupPanel.vue';
+import VictoryScene from '../src/components/game/VictoryScene.vue';
 import { useGameStore } from '../src/stores/game';
 import * as gameController from '../src/composables/useGameController';
 import { opposite } from '../shared/game/rules';
@@ -65,6 +66,32 @@ afterEach(() => {
 });
 
 describe('Turn-based player actions', () => {
+  it('selects a solo character and difficulty, then restarts from the header with the same settings', async () => {
+    const pinia = createPinia(); setActivePinia(pinia);
+    wrapper = mount(App, { global: { plugins: [pinia] } }); store = useGameStore();
+    const setup = wrapper.getComponent(SetupPanel);
+    await setup.findAll('button').find(button => button.text().includes('장난꾸러기 승부사'))!.trigger('click');
+    await setup.get('.settings-row select').setValue('4');
+    expect(setup.get('.opponent-note').text()).toContain('베짱이 AI');
+    expect(setup.get('.settings-row select').findAll('option')).toHaveLength(5);
+    await setup.get('.start-button').trigger('click');
+    expect(store.settings).toMatchObject({ mode: 'ai', blackCharacter: 'jannabi', aiDifficulty: 4 });
+    expect(wrapper.find('.restart-button').exists()).toBe(false);
+    const originalGame = store.state.gameId;
+    await action('black', '기권하기').trigger('click');
+    await dialogAction('기권하기').trigger('click');
+    wrapper.getComponent(VictoryScene).vm.$emit('done'); await nextTick();
+    wrapper.getComponent(ModalDialog).vm.$emit('close'); await nextTick();
+    await wrapper.get('.restart-button').trigger('click');
+    expect(wrapper.findComponent(SetupPanel).exists()).toBe(false);
+    expect(store.state.gameId).not.toBe(originalGame);
+    expect(store.settings).toMatchObject({ blackCharacter: 'jannabi', aiDifficulty: 4, seconds: 30 });
+    expect(store.state.result).toBeNull();
+    expect(store.counts).toEqual({ black: 2, white: 2, empty: 60 });
+    expect(action('black', '힌트').element.disabled).toBe(false);
+    expect(wrapper.find('.restart-button').exists()).toBe(false);
+  });
+
   it.each(['black', 'white'] as const)('shows a waiting dialog to the timed-out online %s player until the opponent decides', async color => {
     const createController = gameController.useGameController;
     let controller!: ReturnType<typeof createController>;

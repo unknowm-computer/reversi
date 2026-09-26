@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue';
-import { DEFAULT_SETTINGS, type GameSettings, type Mode, otherCharacter, characterName } from '../../../shared/game/types';
+import { AI_DIFFICULTIES, DEFAULT_SETTINGS, type GameSettings, type Mode, otherCharacter, characterName } from '../../../shared/game/types';
 import CharacterArt from './CharacterArt.vue';
 import AppIcon from '../common/AppIcon.vue';
 interface Props { connected: boolean; busy: boolean; error: string }
@@ -19,7 +19,6 @@ watch(() => config.mode, (mode, previous) => {
   modeSeconds[previous] = config.seconds;
   config.seconds = modeSeconds[mode];
   if (mode === 'online') emit('online');
-  if (mode === 'ai') config.blackCharacter = 'grasshopper';
 });
 </script>
 <template>
@@ -43,19 +42,20 @@ watch(() => config.mode, (mode, previous) => {
     <section class="setup-card" aria-labelledby="setup-title">
       <div class="card-heading"><div><p class="eyebrow muted">LET'S PLAY</p><h2 id="setup-title">오늘의 한 판</h2></div><span class="card-leaf"><AppIcon name="leaf" /></span></div>
       <div class="mode-tabs" role="group" aria-label="대전 모드"><button v-for="mode in modes" :key="mode.value" :aria-pressed="config.mode === mode.value" :class="{ selected: config.mode === mode.value }" @click="config.mode = mode.value"><AppIcon :name="mode.icon" />{{ mode.label }}</button></div>
-      <div class="mode-description"><span class="status-dot" />{{ config.mode === 'ai' ? '잔나비와 가볍게 실력을 겨뤄보세요.' : config.mode === 'local' ? '한 기기에서 번갈아 돌을 놓아보세요.' : '친구에게 방 코드를 보내 함께 즐겨보세요.' }}</div>
+      <div class="mode-description"><span class="status-dot" />{{ config.mode === 'ai' ? `${characterName(otherCharacter(config.blackCharacter))}와 가볍게 실력을 겨뤄보세요.` : config.mode === 'local' ? '한 기기에서 번갈아 돌을 놓아보세요.' : '친구에게 방 코드를 보내 함께 즐겨보세요.' }}</div>
       <div class="field-heading"><h3>{{ config.mode === 'ai' ? '오늘의 플레이어' : '선공 캐릭터 선택' }}</h3><span>흑돌이 먼저 시작해요</span></div>
       <div class="character-picker" role="group" aria-label="선공 캐릭터">
-        <button v-for="character in ['grasshopper', 'jannabi'] as const" :key="character" class="character-option" :class="{ chosen: config.blackCharacter === character }" :disabled="config.mode === 'ai' && character === 'jannabi'" :aria-pressed="config.blackCharacter === character" @click="config.blackCharacter = character">
+        <button v-for="character in ['grasshopper', 'jannabi'] as const" :key="character" class="character-option" :class="{ chosen: config.blackCharacter === character }" :aria-pressed="config.blackCharacter === character" @click="config.blackCharacter = character">
           <span class="character-check">{{ config.blackCharacter === character ? '✓' : '' }}</span>
           <div class="picker-art"><CharacterArt :character="character" /></div><strong>{{ characterName(character) }}</strong><span>{{ character === 'grasshopper' ? '느긋한 전략가' : '장난꾸러기 승부사' }}</span>
         </button>
       </div>
       <div class="opponent-note">상대는 <strong>{{ characterName(otherCharacter(config.blackCharacter)) }}</strong>{{ config.mode === 'ai' ? ' AI' : '' }} · 백돌로 함께해요</div>
       <div class="settings-row">
+        <label v-if="config.mode === 'ai'"><span>AI 난이도</span><select v-model="config.aiDifficulty"><option v-for="level in AI_DIFFICULTIES" :key="level.value" :value="level.value">{{ level.value }}단계 · {{ level.label }}</option></select></label>
         <label><span>한 수 제한 시간</span><select v-model="config.seconds"><option :value="0">시간 제한 없음</option><option :value="30">30초 · 가볍게</option><option :value="60">60초 · 여유롭게</option></select></label>
         <label v-if="config.mode === 'local'"><span>무르기 기회</span><select v-model="config.undoLimit"><option :value="1">인당 1회</option><option :value="3">인당 3회</option><option :value="-1">무제한</option><option :value="0">사용 안 함</option></select></label>
-        <div v-else class="undo-info"><span>무르기 기회</span><strong><AppIcon name="undo" />{{ config.mode === 'ai' ? '마음껏, 무제한' : '온라인은 사용 안 함' }}</strong></div>
+        <div v-else class="undo-info" :class="{ 'solo-assistance': config.mode === 'ai' }"><span v-if="config.mode !== 'ai'">무르기 기회</span><strong><AppIcon name="undo" />{{ config.mode === 'ai' ? '힌트와 무르기는 무제한' : '온라인은 사용 안 함' }}</strong></div>
       </div>
       <p v-if="config.seconds" class="timeout-note">{{ config.mode === 'ai' ? '시간이 다 되면 봐주고 계속할지, 게임을 끝낼지 선택해요.' : '시간이 다 되면 상대가 봐주거나 게임을 끝낼 수 있어요.' }}</p>
       <template v-if="config.mode === 'online'">
@@ -111,4 +111,5 @@ h1 > span { color: var(--text-accent); }
   .undo-info strong { min-height: 28px; }
 }
 .timeout-note { margin-top: 14px; font-size: var(--text-caption); line-height: 1.7; color: var(--muted); }
+.solo-assistance { grid-column: 1 / -1; }
 </style>

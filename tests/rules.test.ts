@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { applyMove, endGame, flipsFor, initialState, legalMoves, score } from '../shared/game/rules';
-import { chooseMove } from '../shared/game/ai';
+import { chooseDifficultyMove, chooseMove } from '../shared/game/ai';
 import type { Cell, GameState } from '../shared/game/types';
 describe('Reversi rules', () => {
   it('starts with four legal black moves and an even score', () => {
@@ -73,6 +73,23 @@ describe('Reversi rules', () => {
   });
 });
 describe('AI', () => {
+  it.each([1, 2, 3, 4, 5] as const)('difficulty %s returns a legal move without mutating the game and stops after the result', difficulty => {
+    const state = applyMove(initialState('difficulty'), 19)!;
+    const before = JSON.stringify(state);
+    expect(legalMoves(state.board, state.turn)).toContain(chooseDifficultyMove(state, difficulty));
+    expect(JSON.stringify(state)).toBe(before);
+    expect(chooseDifficultyMove(endGame(state, 'black', 'resign'), difficulty)).toBeNull();
+    expect(chooseDifficultyMove({ ...state, board: Array<Cell>(64).fill('black') }, difficulty)).toBeNull();
+  });
+  it('lets beginners choose a non-corner move while the strongest level prioritizes the corner', () => {
+    const board: Cell[] = Array(64).fill(null); board[1] = 'white'; board[2] = 'black'; board[27] = 'white'; board[28] = 'black';
+    const state = { ...initialState('levels'), board };
+    const random = vi.spyOn(Math, 'random').mockReturnValue(.99);
+    try {
+      expect(chooseDifficultyMove(state, 1)).toBe(26);
+      expect(chooseDifficultyMove(state, 5)).toBe(0);
+    } finally { random.mockRestore(); }
+  });
   it('returns a legal move within the search budget', () => {
     const state = initialState('ai'); const start = performance.now();
     expect(legalMoves(state.board, 'black')).toContain(chooseMove(state, 50));
