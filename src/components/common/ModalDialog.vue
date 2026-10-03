@@ -4,8 +4,9 @@ import AppIcon from "./AppIcon.vue";
 interface Props {
   title: string;
   dismissible?: boolean;
+  size?: "default" | "wide";
 }
-withDefaults(defineProps<Props>(), { dismissible: true });
+withDefaults(defineProps<Props>(), { dismissible: true, size: "default" });
 const emit = defineEmits<{ (event: "close"): void }>();
 const dialog = ref<HTMLDialogElement | null>(null);
 let previous: HTMLElement | null = null;
@@ -22,6 +23,7 @@ onUnmounted(() => previous?.focus());
   <dialog
     ref="dialog"
     class="modal"
+    :class="{ 'modal--wide': size === 'wide' }"
     aria-labelledby="dialog-title"
     @cancel.prevent="dismissible && emit('close')"
     @click="dismissible && $event.target === dialog && emit('close')"
@@ -47,9 +49,12 @@ onUnmounted(() => previous?.focus());
   border: 1px solid var(--line);
   border-radius: 24px;
   padding: 0;
-  width: min(720px, calc(100% - 32px));
+  width: min(480px, calc(100% - 32px));
   max-height: calc(100dvh - 40px);
   box-shadow: 0 24px 100px #142e3533;
+}
+.modal--wide {
+  width: min(720px, calc(100% - 32px));
 }
 .modal::backdrop {
   background: #142e3580;

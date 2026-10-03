@@ -214,7 +214,7 @@ function confirm(): void {
       <p class="confirm-text" role="status">시간이 초과됐어요. 상대가 이번 한 수를 봐줄지 결정하고 있어요.<br>결정이 도착하면 자동으로 이어집니다. 잠시만 기다려 주세요.</p>
       <p v-if="game.connectionNotice.value" class="game-error" role="alert">{{ game.connectionNotice.value }}</p>
     </ModalDialog>
-    <ModalDialog v-else-if="modal === 'rules'" title="게임 방법" @close="modal = null">
+    <ModalDialog v-else-if="modal === 'rules'" title="게임 방법" size="wide" @close="modal = null">
       <GameRules :game-type="activeGameType" @close="modal = null" />
     </ModalDialog>
     <ModalDialog
