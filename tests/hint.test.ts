@@ -2,30 +2,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, ref } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
-import { applyMove, initialState, legalMoves } from '../shared/game/rules';
-import type { GameState } from '../shared/game/types';
+import { applyMove, initialState, legalMoves } from '../shared/games/reversi/rules';
+import { applyMove as applyGomokuMove, initialState as initialGomokuState } from '../shared/games/gomoku/rules';
 import { useGameHint } from '../src/composables/useGameHint';
+import type { GameAiAnswer, GameAiRequest } from '../src/workers/gameAi.types';
 
-interface HintAnswer { gameId: string; revision: number; index: number | null }
 class FakeWorker {
   static instances: FakeWorker[] = [];
   static failCreate = false;
   static failPost = false;
-  onmessage: ((event: MessageEvent<HintAnswer>) => void) | null = null;
+  onmessage: ((event: MessageEvent<GameAiAnswer>) => void) | null = null;
   onerror: (() => void) | null = null;
-  request: GameState | null = null;
+  request: GameAiRequest | null = null;
   terminated = false;
   constructor() {
     if (FakeWorker.failCreate) throw new Error('Worker unavailable');
     FakeWorker.instances.push(this);
   }
-  postMessage(state: GameState): void {
+  postMessage(state: GameAiRequest): void {
     if (FakeWorker.failPost) throw new Error('Worker message unavailable');
     this.request = state;
   }
   terminate(): void { this.terminated = true; }
-  reply(index: number | null, metadata?: Partial<HintAnswer>): void {
-    this.onmessage?.({ data: { gameId: this.request!.gameId, revision: this.request!.revision, index, ...metadata } } as MessageEvent<HintAnswer>);
+  reply(index: number | null, metadata?: Partial<GameAiAnswer>): void {
+    this.onmessage?.({ data: { gameType: this.request!.gameType, gameId: this.request!.gameId, revision: this.request!.revision, index, ...metadata } } as MessageEvent<GameAiAnswer>);
   }
 }
 
@@ -50,6 +50,9 @@ describe('solo hints', () => {
     const worker = FakeWorker.instances[0];
     expect(worker.request?.turn).toBe('white');
     expect(worker.request?.board).not.toBe(state.value.board);
+    expect(worker.request?.flipped).not.toBe(state.value.flipped);
+    expect(worker.request?.winningLine).not.toBe(state.value.winningLine);
+    expect(worker.request?.difficulty).toBeUndefined();
     expect(hint.busy.value).toBe(true);
     const move = legalMoves(state.value.board, 'white')[0];
     worker.reply(move);
@@ -89,8 +92,9 @@ describe('solo hints', () => {
     allowed.value = false; expect(hint.index.value).toBeNull();
   });
 
-  it.each(['game', 'revision', 'turn', 'board', 'result'] as const)('invalidates pending and displayed hints after a %s change', field => {
+  it.each(['gameType', 'game', 'revision', 'turn', 'board', 'result'] as const)('invalidates pending and displayed hints after a %s change', field => {
     function change(): void {
+      if (field === 'gameType') state.value.gameType = 'gomoku';
       if (field === 'game') state.value.gameId += '-new';
       if (field === 'revision') state.value.revision++;
       if (field === 'turn') state.value.turn = state.value.turn === 'black' ? 'white' : 'black';
@@ -107,7 +111,7 @@ describe('solo hints', () => {
 
   it('ignores mismatched response metadata', () => {
     hint.request(); const worker = FakeWorker.instances[0];
-    worker.reply(19, { gameId: 'old' }); worker.reply(19, { revision: -1 });
+    worker.reply(19, { gameType: 'gomoku' }); worker.reply(19, { gameId: 'old' }); worker.reply(19, { revision: -1 });
     expect(hint.index.value).toBeNull(); expect(hint.busy.value).toBe(true);
     worker.reply(19); expect(hint.index.value).toBe(19);
   });
@@ -136,5 +140,59 @@ describe('solo hints', () => {
     expect(stale.terminated).toBe(true); expect(hint.busy.value).toBe(false);
     stale.reply(19); stale.onerror?.();
     expect(hint.index.value).toBeNull(); expect(hint.error.value).toBeNull();
+  });
+
+  it('recommends empty gomoku intersections across the full board and clears a hint after placing a stone', () => {
+    state.value = initialGomokuState('gomoku-hint');
+    const before = JSON.stringify(state.value);
+    hint.request();
+    expect(FakeWorker.instances[0].request?.gameType).toBe('gomoku');
+    expect(FakeWorker.instances[0].request?.difficulty).toBeUndefined();
+    FakeWorker.instances[0].reply(224);
+    expect(hint.index.value).toBe(224);
+    expect(JSON.stringify(state.value)).toBe(before);
+    state.value = applyGomokuMove(state.value, 224)!;
+    expect(hint.index.value).toBeNull();
+    hint.request(); FakeWorker.instances[1].reply(112);
+    expect(hint.index.value).toBe(112);
+  });
+
+  it.each(['black', 'white'] as const)('rejects a %s double-three recommendation and can retry without consuming a turn', color => {
+    state.value = initialGomokuState('gomoku-forbidden-hint');
+    state.value.turn = color;
+    for (const index of [111, 113, 97, 127]) state.value.board[index] = color;
+    const before = JSON.stringify(state.value);
+    hint.request(); FakeWorker.instances[0].reply(112);
+    expect(hint.index.value).toBeNull();
+    expect(hint.error.value).toContain('다시');
+    hint.request(); FakeWorker.instances[1].reply(0);
+    expect(hint.index.value).toBe(0);
+    expect(hint.error.value).toBeNull();
+    expect(JSON.stringify(state.value)).toBe(before);
+  });
+
+  it.each([112, 225, -1, null])('rejects occupied or invalid gomoku recommendation %s', move => {
+    state.value = applyGomokuMove(initialGomokuState('gomoku-hint'), 112)!;
+    hint.request(); FakeWorker.instances[0].reply(move);
+    expect(hint.index.value).toBeNull(); expect(hint.error.value).toContain('다시');
+    hint.request(); FakeWorker.instances[1].reply(0);
+    expect(hint.index.value).toBe(0); expect(hint.error.value).toBeNull();
+  });
+
+  it.each(['black', 'white'] as const)('rejects %s double-four and overline hints', color => {
+    const forbiddenPositions = [
+      { stones: [110, 111, 113, 82, 97, 127], move: 112 },
+      { stones: [108, 109, 111, 112, 113], move: 110 },
+    ];
+    for (const [index, setup] of forbiddenPositions.entries()) {
+      state.value = initialGomokuState(`gomoku-forbidden-hint-${index}`);
+      state.value.turn = color;
+      for (const point of setup.stones) state.value.board[point] = color;
+      const before = JSON.stringify(state.value);
+      hint.request(); FakeWorker.instances[index].reply(setup.move);
+      expect(hint.index.value).toBeNull();
+      expect(hint.error.value).toContain('다시');
+      expect(JSON.stringify(state.value)).toBe(before);
+    }
   });
 });

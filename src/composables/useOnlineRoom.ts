@@ -48,7 +48,7 @@ export function useOnlineRoom(onState: (room: RoomSnapshot) => void, onClosed: (
   async function enter(type: 'create' | 'join', config: GameSettings, code = ''): Promise<void> {
     if (busy.value) return;
     const response = await send(type === 'create'
-      ? { type, requestId: createId(), settings: { ...config, mode: 'online', undoLimit: 0 } }
+      ? { type, requestId: createId(), settings: { ...config, gameType: config.gameType ?? 'reversi', mode: 'online', undoLimit: 0 } }
       : { type, requestId: createId(), code: code.trim().toUpperCase() });
     if (response.ok && response.room && response.token && response.color) {
       color.value = response.color; session = { code: response.room.code, token: response.token, color: response.color }; save(); receive(response.room);

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { useId } from 'vue';
-import type { Character, Color, Reaction } from '../../../shared/game/types';
+import type { Character, Color, GameType, Reaction } from '../../../shared/game/types';
 import { characterName, TURN_WARNING_MS } from '../../../shared/game/types';
 import AppIcon from '../common/AppIcon.vue';
 import CharacterArt from './CharacterArt.vue';
 interface Props {
+  gameType?: GameType;
   character: Character;
   color: Color;
   count: number;
@@ -20,12 +21,12 @@ interface Props {
   canHint?: boolean;
   hintBusy?: boolean;
 }
-withDefaults(defineProps<Props>(), { showActions: false, canUndo: false, canResign: false, showHint: false, canHint: false, hintBusy: false });
+withDefaults(defineProps<Props>(), { gameType: 'reversi', showActions: false, canUndo: false, canResign: false, showHint: false, canHint: false, hintBusy: false });
 const emit = defineEmits<{ (event: 'undo'): void; (event: 'resign'): void; (event: 'hint'): void }>();
 const portraitClipId = useId();
 </script>
 <template>
-  <section class="player-panel" :class="{ active, 'with-actions': showActions, 'with-hint': showActions && showHint }" :aria-label="`${characterName(character)} ${color === 'black' ? '흑' : '백'}, ${count}개`">
+  <section class="player-panel" :class="{ active, 'with-actions': showActions, 'with-hint': showActions && showHint }" :aria-label="`${characterName(character)} ${color === 'black' ? '흑' : '백'}, ${count}${gameType === 'gomoku' ? '번 착수' : '개'}`">
     <div class="avatar">
       <svg v-if="character === 'grasshopper'" class="portrait-clip" aria-hidden="true" width="0" height="0">
         <defs>
@@ -44,7 +45,7 @@ const portraitClipId = useId();
       <svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17" class="track" /><circle cx="20" cy="20" r="17" class="progress" :style="{ strokeDashoffset: 107 * (1 - Math.min(1, remaining / (seconds * 1000))) }" /></svg>
       <span>{{ Math.ceil(remaining / 1000) }}</span>
     </div>
-    <div class="score"><strong>{{ String(count).padStart(2, '0') }}</strong><span>개의 돌</span></div>
+    <div class="score"><strong>{{ String(count).padStart(2, '0') }}</strong><span>{{ gameType === 'gomoku' ? '번의 착수' : '개의 돌' }}</span></div>
     <div v-if="showActions" class="player-actions">
       <button v-if="showHint" class="secondary hint-action" :disabled="!canHint || hintBusy" :aria-busy="hintBusy" :aria-label="hintBusy ? '힌트를 찾는 중' : '힌트 보기 (무제한)'" title="추천할 칸 보기 · 무제한" @click="emit('hint')"><AppIcon name="hint" />힌트</button>
       <button class="secondary" :disabled="!canUndo" :aria-label="`한 수 무르기 (${undoCount === '∞' ? '무제한' : `${undoCount}회 남음`})`" @click="emit('undo')"><AppIcon name="undo" />한 수 무르기 ({{ undoCount }})</button>

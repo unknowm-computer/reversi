@@ -10,7 +10,7 @@ import SetupPanel from '../src/components/game/SetupPanel.vue';
 import VictoryScene from '../src/components/game/VictoryScene.vue';
 import { useGameStore } from '../src/stores/game';
 import * as gameController from '../src/composables/useGameController';
-import { opposite } from '../shared/game/rules';
+import { opposite } from '../shared/game/state';
 import { DEFAULT_SETTINGS, TIMEOUT_PENALTY_MS, type Cell, type Color, type GameSettings, type GameState } from '../shared/game/types';
 
 let wrapper: VueWrapper | undefined;
@@ -72,7 +72,7 @@ describe('Turn-based player actions', () => {
     const setup = wrapper.getComponent(SetupPanel);
     await setup.findAll('button').find(button => button.text().includes('장난꾸러기 승부사'))!.trigger('click');
     await setup.get('.settings-row select').setValue('4');
-    expect(setup.get('.opponent-note').text()).toContain('베짱이 AI');
+    expect(setup.get('.mode-description').text()).toContain('베짱이와 가볍게');
     expect(setup.get('.settings-row select').findAll('option')).toHaveLength(5);
     await setup.get('.start-button').trigger('click');
     expect(store.settings).toMatchObject({ mode: 'ai', blackCharacter: 'jannabi', aiDifficulty: 4 });
@@ -149,7 +149,7 @@ describe('Turn-based player actions', () => {
     const before = JSON.stringify(store.state);
     await action('black', '힌트').trigger('click');
     expect(action('black', '힌트').element.disabled).toBe(true);
-    hintWorker!.onmessage?.({ data: { gameId: hintWorker!.request!.gameId, revision: 0, index: 19 } } as MessageEvent);
+    hintWorker!.onmessage?.({ data: { gameType: hintWorker!.request!.gameType, gameId: hintWorker!.request!.gameId, revision: 0, index: 19 } } as MessageEvent);
     await nextTick();
     expect(wrapper!.get('[data-cell="19"]').attributes('aria-label')).toContain('힌트 추천');
     expect(wrapper!.findAll('.suggestion-marker')).toHaveLength(1);

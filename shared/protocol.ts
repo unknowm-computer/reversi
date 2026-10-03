@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import type { Color, GameSettings, GameState } from './game/types.js';
+import { GOMOKU_CELL_COUNT } from './games/gomoku/board.js';
 const settingsSchema = z.object({
+  gameType: z.enum(['reversi', 'gomoku']).default('reversi'),
   mode: z.literal('online'), seconds: z.union([z.literal(0), z.literal(30), z.literal(60)]),
   undoLimit: z.literal(0), blackCharacter: z.enum(['jannabi', 'grasshopper']),
 });
@@ -12,7 +14,7 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('resume'), ...identity, code: z.string().regex(/^[A-Z2-9]{6}$/), token: z.string().uuid() }),
   z.object({ type: z.literal('ready'), ...identity }),
   z.object({ type: z.literal('character'), ...identity, character: z.enum(['jannabi', 'grasshopper']) }),
-  z.object({ type: z.literal('move'), ...gameIdentity, index: z.number().int().min(0).max(63) }),
+  z.object({ type: z.literal('move'), ...gameIdentity, index: z.number().int().min(0).max(GOMOKU_CELL_COUNT - 1) }),
   z.object({ type: z.literal('timeout-choice'), ...gameIdentity, choice: z.enum(['forgive', 'end']) }),
   z.object({ type: z.literal('resign'), ...gameIdentity }),
   z.object({ type: z.literal('rematch'), ...gameIdentity }),

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { initialState, applyMove } from '../shared/game/rules';
+import { initialState, applyMove } from '../shared/games/reversi/rules';
+import { initialState as initialGomokuState, applyMove as applyGomokuMove } from '../shared/games/gomoku/rules';
+import { endGame } from '../shared/game/state';
 import { useCharacterReaction } from '../src/composables/useCharacterReaction';
 
 describe('corner character reactions', () => {
@@ -46,5 +48,41 @@ describe('corner character reactions', () => {
     reaction.transition(before, next, 'jannabi'); expect(reaction.corner.value).toBeNull();
     before.board[1] = 'white'; before.board[2] = 'black'; const corner = applyMove(before, 0)!;
     reaction.transition(corner, corner, 'jannabi'); expect(reaction.corner.value).toBeNull();
+  });
+});
+
+describe('gomoku character reactions', () => {
+  it('keeps ordinary intersections free of capture or corner celebrations and clears the previous game reaction', () => {
+    const before = initialGomokuState('gomoku');
+    const reaction = useCharacterReaction();
+    reaction.corner.value = { actor: 'black', mood: 'sly', until: Infinity };
+    reaction.transition(before, applyGomokuMove(before, 0)!, 'jannabi');
+    expect(reaction.corner.value).toBeNull();
+    expect(reaction.event.value).toBe('move');
+    expect(reaction.message.value).toBe('');
+    expect(reaction.reactions.value).toEqual({ black: 'idle', white: 'idle' });
+  });
+
+  it('does not interpret reversi-only transition fields as gomoku events', () => {
+    const before = initialGomokuState('gomoku');
+    const next = { ...applyGomokuMove(before, 0)!, flipped: [1, 2, 3], passed: 'white' as const };
+    const reaction = useCharacterReaction();
+    reaction.transition(before, next, 'jannabi');
+    expect(reaction.corner.value).toBeNull(); expect(reaction.event.value).toBe('move');
+    expect(reaction.message.value).toBe('');
+  });
+
+  it('celebrates five in a row and retains resignation and timeout results', () => {
+    const before = initialGomokuState('gomoku');
+    for (const index of [105, 106, 107, 108]) before.board[index] = 'black';
+    const victory = applyGomokuMove(before, 109)!;
+    expect(victory.result).toEqual({ winner: 'black', reason: 'fiveInRow' });
+    for (const next of [victory, endGame(before, 'white', 'resign'), endGame(before, 'white', 'timeout')]) {
+      const reaction = useCharacterReaction();
+      reaction.transition(before, next, 'grasshopper');
+      expect(reaction.event.value).toBe('end');
+      expect(reaction.reactions.value).toEqual({ black: 'win', white: 'lose' });
+      expect(reaction.until.value).toBe(Infinity);
+    }
   });
 });

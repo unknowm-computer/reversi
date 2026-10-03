@@ -2,7 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, ref } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
-import { initialState, applyMove } from '../shared/game/rules';
+import { initialState, applyMove } from '../shared/games/reversi/rules';
+import { initialState as initialGomokuState, applyMove as applyGomokuMove } from '../shared/games/gomoku/rules';
 import type { GameState } from '../shared/game/types';
 import { impactKind, useMoveImpact, IMPACT_MS } from '../src/composables/useMoveImpact';
 let wrapper: VueWrapper | undefined;
@@ -33,6 +34,25 @@ describe('special move impact', () => {
     expect(impactKind(before, { ...next, revision: 8 })).toBeNull();
     expect(impactKind(before, { ...next, flipped: [] })).toBeNull();
     expect(impactKind(next, { ...next, revision: 2, result: { winner: 'black', reason: 'resign' } })).toBeNull();
+  });
+  it('never plays a capture taunt for gomoku, including a five-stone victory', () => {
+    const before = initialGomokuState('gomoku');
+    for (const index of [105, 106, 107, 108]) before.board[index] = 'black';
+    const next = applyGomokuMove(before, 109)!;
+    expect(next.result?.reason).toBe('fiveInRow');
+    expect(impactKind(before, next)).toBeNull();
+    expect(impactKind(before, { ...next, flipped: [105, 106, 107, 108, 109] })).toBeNull();
+  });
+  it('clears a pending capture when the game type changes at the same revision', () => {
+    const [before, next] = capture(19, 5); const state = ref(before); let impact!: ReturnType<typeof useMoveImpact>;
+    wrapper = mount(defineComponent({ setup() { impact = useMoveImpact(() => state.value); return () => null; } }));
+    state.value = next;
+    expect(impact.busy.value).toBe(true);
+    state.value = { ...initialGomokuState(next.gameId), revision: next.revision };
+    expect(impact.busy.value).toBe(false); expect(impact.scene.value).toBeNull();
+    expect(impact.displayed.value.gameType).toBe('gomoku');
+    vi.advanceTimersByTime(3000);
+    expect(impact.displayed.value.board).toHaveLength(225);
   });
   it('starts the taunt once, places the new stone first and waits for the face and flips', () => {
     const [before, next] = capture(19, 5); const state = ref(before); const start = vi.fn(); let impact!: ReturnType<typeof useMoveImpact>;

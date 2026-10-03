@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, ref } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import GameBoard from '../src/components/game/GameBoard.vue';
+import GomokuBoard from '../src/components/game/GomokuBoard.vue';
+import type { Cell } from '../shared/game/types';
+import { GOMOKU_CELL_COUNT } from '../shared/games/gomoku/board';
 import { useGamepad } from '../src/composables/useGamepad';
 
 let wrapper: VueWrapper | undefined;
@@ -84,6 +87,17 @@ describe('gamepad input', () => {
 
 
 describe('gamepad board integration', () => {
+  it('rejects a Gomoku double three through the shared keyboard and gamepad cursor', async () => {
+    const board = Array<Cell>(GOMOKU_CELL_COUNT).fill(null);
+    [97, 111, 113, 127].forEach(index => { board[index] = 'white'; });
+    wrapper = mount(GomokuBoard, { attachTo: document.body, props: { board, turn: 'white', interactive: true, lastMove: 127, winningLine: [] } });
+    tick(0); button(0, true); tick(16);
+    expect(wrapper.emitted('move')).toBeUndefined();
+    await wrapper.get('[data-cell="112"]').trigger('keydown', { key: 'Home' });
+    button(0, false); tick(32); button(0, true); tick(48);
+    expect(wrapper.emitted('move')).toEqual([[105]]);
+  });
+
   it('shares the keyboard cursor, rejects illegal moves and respects the input lock', async () => {
     wrapper = mount(GameBoard, { attachTo: document.body, props: { board: Array(64).fill(null), legal: [19], turn: 'black', interactive: true, lastMove: null, flipped: [], revision: 0 } });
     tick(0); button(14, true); tick(16); await wrapper.vm.$nextTick();

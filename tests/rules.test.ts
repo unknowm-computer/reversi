@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { applyMove, endGame, flipsFor, initialState, legalMoves, score } from '../shared/game/rules';
-import { chooseDifficultyMove, chooseMove } from '../shared/game/ai';
+import { applyMove, flipsFor, initialState, legalMoves } from '../shared/games/reversi/rules';
+import { endGame, score } from '../shared/game/state';
+import { chooseDifficultyMove, chooseMove } from '../shared/games/reversi/ai';
 import type { Cell, GameState } from '../shared/game/types';
 describe('Reversi rules', () => {
   it('starts with four legal black moves and an even score', () => {

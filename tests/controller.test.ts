@@ -6,17 +6,17 @@ import { createPinia } from 'pinia';
 import { useGameController } from '../src/composables/useGameController';
 import { IMPACT_MS } from '../src/composables/useMoveImpact';
 import { TIMEOUT_PENALTY_MS } from '../src/composables/useTimeoutPenalty';
-import { DEFAULT_SETTINGS, TIMEOUT_PENALTY_HIT_MS, type GameState } from '../shared/game/types';
+import { DEFAULT_SETTINGS, TIMEOUT_PENALTY_HIT_MS, type GameState, type GameType } from '../shared/game/types';
 class FakeWorker {
   static instances: FakeWorker[] = [];
-  onmessage: ((event: MessageEvent<{ gameId: string; revision: number; index: number }>) => void) | null = null;
+  onmessage: ((event: MessageEvent<{ gameType: GameType; gameId: string; revision: number; index: number }>) => void) | null = null;
   onerror: (() => void) | null = null;
   request: GameState | null = null;
   terminated = false;
   constructor() { FakeWorker.instances.push(this); }
   postMessage(state: GameState): void { this.request = state; }
   terminate(): void { this.terminated = true; }
-  reply(index: number): void { this.onmessage?.({ data: { gameId: this.request!.gameId, revision: this.request!.revision, index } } as MessageEvent<{ gameId: string; revision: number; index: number }>); }
+  reply(index: number): void { this.onmessage?.({ data: { gameType: this.request!.gameType, gameId: this.request!.gameId, revision: this.request!.revision, index } } as MessageEvent<{ gameType: GameType; gameId: string; revision: number; index: number }>); }
 }
 let wrapper: VueWrapper | undefined;
 let controller: ReturnType<typeof useGameController>;
@@ -27,6 +27,47 @@ beforeEach(() => {
   wrapper = mount(defineComponent({ setup() { controller = useGameController(); return () => null; } }), { global: { plugins: [createPinia()] } });
 });
 afterEach(() => { wrapper?.unmount(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+describe('Gomoku controller integration', () => {
+  it('shares unlimited hints, AI replies, undo and rematch without switching games', () => {
+    controller.start({ ...DEFAULT_SETTINGS, gameType: 'gomoku', aiDifficulty: 4 });
+    expect(controller.available.value).toHaveLength(225);
+    controller.hint.request();
+    FakeWorker.instances[0].reply(112);
+    expect(controller.hint.index.value).toBe(112);
+    expect(controller.store.state.board[112]).toBeNull();
+    controller.move(112);
+    vi.advanceTimersByTime(250);
+    const worker = FakeWorker.instances[1];
+    expect(worker.request?.gameType).toBe('gomoku');
+    worker.reply(113);
+    vi.advanceTimersByTime(250);
+    expect(controller.store.state.board[113]).toBe('white');
+    expect(controller.store.state.flipped).toEqual([]);
+    controller.undo();
+    expect(controller.store.state.board).toEqual(Array(225).fill(null));
+    expect(controller.hint.index.value).toBeNull();
+    controller.finish('black', 'resign');
+    controller.rematch();
+    expect(controller.store.state.gameType).toBe('gomoku');
+    expect(controller.store.settings.aiDifficulty).toBe(4);
+    expect(controller.store.state.result).toBeNull();
+  });
+
+  it('preserves Gomoku state while the timeout decision and forgiveness run', () => {
+    controller.start({ ...DEFAULT_SETTINGS, gameType: 'gomoku', mode: 'local' });
+    const board = [...controller.store.state.board];
+    vi.advanceTimersByTime(30001);
+    expect(controller.timeoutLoser.value).toBe('black');
+    expect(controller.canMove.value).toBe(false);
+    controller.chooseTimeout('forgive');
+    vi.advanceTimersByTime(TIMEOUT_PENALTY_MS);
+    expect(controller.canMove.value).toBe(true);
+    expect(controller.store.state.board).toEqual(board);
+    expect(controller.store.state.gameType).toBe('gomoku');
+    controller.move(224);
+    expect(controller.store.state.board[224]).toBe('black');
+  });
+});
 describe('Solo hint integration', () => {
   it('keeps the timer running and the opponent independent from unlimited hints', () => {
     controller.start(DEFAULT_SETTINGS);
@@ -129,6 +170,19 @@ describe('Controller lifecycle', () => {
   it('ignores an old AI answer after restarting the game', () => {
     controller.start(DEFAULT_SETTINGS); controller.move(19); vi.advanceTimersByTime(500); const worker = FakeWorker.instances[0];
     controller.start(DEFAULT_SETTINGS); worker.reply(18); expect(controller.store.state.revision).toBe(0);
+  });
+  it('continues with a legal fallback after an AI worker error and ignores later events', () => {
+    controller.start(DEFAULT_SETTINGS); controller.move(19); vi.advanceTimersByTime(500);
+    const worker = FakeWorker.instances[0];
+    const fallback = controller.available.value[0];
+    expect(worker.request?.board).not.toBe(controller.store.state.board);
+    worker.onerror?.();
+    expect(worker.terminated).toBe(true);
+    expect(controller.thinking.value).toBe(false);
+    expect(controller.store.state.lastMove).toBe(fallback);
+    expect(controller.store.state.revision).toBe(2);
+    worker.reply(18); worker.onerror?.();
+    expect(controller.store.state.revision).toBe(2);
   });
   it('restores exactly the pre-move remaining time on undo', () => {
     controller.start({ ...DEFAULT_SETTINGS, seconds: 30 }); vi.advanceTimersByTime(6500); controller.move(19); controller.undo();

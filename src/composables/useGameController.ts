@@ -7,18 +7,27 @@ import { useCharacterReaction } from './useCharacterReaction';
 import { useMoveImpact, IMPACT_MS } from './useMoveImpact';
 import { useTimeoutPenalty } from './useTimeoutPenalty';
 import { useGameHint } from './useGameHint';
-import { legalMoves, opposite } from '../../shared/game/rules';
-import { characterName, otherCharacter, DEFAULT_AI_DIFFICULTY, TURN_WARNING_MS, type Color, type GameSettings, type GameState, type Reaction } from '../../shared/game/types';
+import { useGameAiWorker } from './useGameAiWorker';
+import { isPlacement, legalMoves } from '../../shared/game/engine';
+import { opposite } from '../../shared/game/state';
+import { characterName, otherCharacter, DEFAULT_AI_DIFFICULTY, TURN_WARNING_MS, type Color, type GameSettings, type Reaction } from '../../shared/game/types';
 export function useGameController() {
   const store = useGameStore();
   const screen = ref<'setup' | 'lobby' | 'game'>('setup');
   const audio = useGameAudio(), reaction = useCharacterReaction();
   const impact = useMoveImpact(() => store.state, () => audio.sfx('taunt'));
-  const paused = ref(document.hidden), thinking = ref(false), animating = ref(false);
+  const paused = ref(document.hidden), animating = ref(false);
+  const ai = useGameAiWorker(() => store.state, index => {
+    if (index !== null && !paused.value) commit(index);
+  }, () => {
+    const fallback = available.value[0];
+    if (fallback !== undefined && !paused.value) commit(fallback);
+  });
+  const thinking = ai.busy;
   const clock = ref(Date.now());
   const localTimeout = ref<Color | null>(null);
   let remotePenaltyKey: string | null = null;
-  let worker: Worker | null = null, animationTimer: number | undefined;
+  let animationTimer: number | undefined;
   let pendingTurn = false;
   let warnedHalf = false;
   let lastCountdownSecond: number | null = null;
@@ -40,7 +49,7 @@ export function useGameController() {
       store.online(room.game, room.settings); screen.value = 'game';
       if (changed) {
         warnedHalf = false; lastCountdownSecond = null;
-        if (room.game.revision > 0 && before.gameId === room.game.gameId && (room.game.flipped.length || room.game.result)) {
+        if (room.game.revision > 0 && before.gameId === room.game.gameId && (isPlacement(before, room.game) || room.game.result)) {
           reaction.transition(before, room.game, store.settings.blackCharacter);
           if (!impact.scene.value || reaction.event.value === 'end') audio.sfx(reaction.event.value, room.game.flipped.length);
         } else reaction.reset();
@@ -56,7 +65,7 @@ export function useGameController() {
     } else { screen.value = 'lobby'; store.active = false; }
   }, () => { cancelWork(); penalty.cancel(); localTimeout.value = null; remotePenaltyKey = null; timer.stop(); store.active = false; screen.value = 'setup'; });
   const myColor = computed<Color>(() => store.settings.mode === 'online' ? online.color.value : 'black');
-  const available = computed(() => store.state.result ? [] : legalMoves(store.state.board, store.state.turn));
+  const available = computed<number[]>(() => legalMoves(store.state));
   const disconnected = computed(() => store.settings.mode === 'online' && (!online.connected.value || online.room.value?.players.some(p => !p.connected)));
   const connectionNotice = computed<string>(() => disconnected.value ? '연결을 기다리고 있어요. 서버 시간은 계속 흐릅니다.' : '');
   const timeoutLoser = computed<Color | null>(() => store.settings.mode === 'online' ? (online.room.value?.timeout?.phase === 'decision' ? online.room.value.timeout.loser : null) : localTimeout.value);
@@ -77,10 +86,10 @@ export function useGameController() {
     if (paused.value) return '잠시 쉬어가는 중';
     if (timeoutDecider.value) return `${name(timeoutDecider.value)}의 선택을 기다리고 있어요. 대국 시간은 멈춰 있어요.`;
     if (penalty.recipient.value) return `${name(penalty.recipient.value)}, 꿀밤 한 대! 같은 차례로 계속해요.`;
-    if (animating.value) return '돌을 뒤집고 있어요…';
+    if (animating.value) return store.state.gameType === 'gomoku' ? '돌을 놓고 있어요…' : '돌을 뒤집고 있어요…';
     if (thinking.value) return `${name('white')}가 한 수를 고민하고 있어요…`;
     if (reaction.until.value > clock.value && reaction.message.value) return reaction.message.value;
-    if (store.settings.mode === 'ai') return '당신의 차례예요. 초록 점에 돌을 놓아보세요.';
+    if (store.settings.mode === 'ai') return store.state.gameType === 'gomoku' ? '당신의 차례예요. 빈 교차점에 돌을 놓아보세요.' : '당신의 차례예요. 초록 점에 돌을 놓아보세요.';
     return `${name(store.state.turn)} · ${store.state.turn === 'black' ? '흑' : '백'}의 차례예요.`;
   });
   function mood(color: Color): Reaction {
@@ -93,24 +102,10 @@ export function useGameController() {
     if (thinking.value || (store.settings.seconds && timer.remaining.value <= store.settings.seconds * 500)) return 'think';
     return 'idle';
   }
-  function cancelWork(): void { impact.cancel(); worker?.terminate(); worker = null; thinking.value = false; window.clearTimeout(animationTimer); animating.value = false; }
+  function cancelWork(): void { impact.cancel(); ai.cancel(); window.clearTimeout(animationTimer); animating.value = false; }
   function startAi(): void {
     if (store.settings.mode !== 'ai' || store.state.turn !== 'white' || store.state.result || penalty.recipient.value || paused.value || screen.value !== 'game') return;
-    thinking.value = true;
-    worker = new Worker(new URL('../workers/reversiAi.worker.ts', import.meta.url), { type: 'module' });
-    const task = worker;
-    worker.onmessage = (event: MessageEvent<{ gameId: string; revision: number; index: number | null }>): void => {
-      const answer = event.data;
-      if (worker !== task || answer.gameId !== store.state.gameId || answer.revision !== store.state.revision) return;
-      worker?.terminate(); worker = null; thinking.value = false;
-      if (answer.index !== null && !paused.value) commit(answer.index);
-    };
-    worker.onerror = (): void => {
-      if (worker !== task) return;
-      worker?.terminate(); worker = null; thinking.value = false;
-      const fallback = available.value[0]; if (fallback !== undefined && !paused.value) commit(fallback);
-    };
-    worker.postMessage({ ...(JSON.parse(JSON.stringify(store.state)) as GameState), difficulty: store.settings.aiDifficulty ?? DEFAULT_AI_DIFFICULTY });
+    ai.request(store.settings.aiDifficulty ?? DEFAULT_AI_DIFFICULTY);
   }
   function nextTurn(): void { pendingTurn = false; animating.value = false; timer.start(store.settings.seconds * 1000); startAi(); }
   function commit(index: number): void {
@@ -123,7 +118,8 @@ export function useGameController() {
     if (!impact.scene.value || reaction.event.value === 'end') audio.sfx(reaction.event.value, store.state.flipped.length);
     if (store.state.result) { pendingTurn = false; return; }
     animating.value = true; pendingTurn = true;
-    animationTimer = window.setTimeout(nextTurn, impact.busy.value ? IMPACT_MS + 460 + store.state.flipped.length * 14 : 460);
+    const moveDuration = store.state.gameType === 'gomoku' ? 200 : 460;
+    animationTimer = window.setTimeout(nextTurn, impact.busy.value ? IMPACT_MS + 460 + store.state.flipped.length * 14 : moveDuration);
   }
   function move(index: number): void {
     if (!canMove.value) return;
@@ -198,7 +194,7 @@ export function useGameController() {
     }
   }, 150);
   watch(() => [screen.value, store.counts.empty, Boolean(store.state.result)] as const, () => {
-    audio.changeScene(screen.value !== 'game' ? 'lobby' : store.state.result ? 'off' : store.counts.empty <= 10 ? 'late' : 'game');
+    audio.changeScene(screen.value !== 'game' ? 'lobby' : store.state.result ? 'off' : store.state.gameType === 'reversi' && store.counts.empty <= 10 ? 'late' : 'game');
   }, { immediate: true });
   if (online.hasSession) online.connect();
   onUnmounted(() => { cancelWork(); window.clearInterval(pulse); document.removeEventListener('visibilitychange', visibility); });

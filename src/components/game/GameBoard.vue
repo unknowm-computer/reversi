@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { useGamepad } from '../../composables/useGamepad';
 import AppIcon from '../common/AppIcon.vue';
 import type { Cell, Color } from '../../../shared/game/types';
+import { REVERSI_CELL_COUNT, REVERSI_COLUMNS, REVERSI_SIZE, reversiCoordinate } from '../../../shared/games/reversi/board';
 interface Props { board: Cell[]; legal: number[]; turn: Color; interactive: boolean; lastMove: number | null; flipped: number[]; revision: number; hintIndex?: number | null }
 const props = withDefaults(defineProps<Props>(), { hintIndex: null });
 const emit = defineEmits<{ (event: 'move', index: number): void }>();
@@ -10,9 +11,9 @@ const grid = ref<HTMLElement | null>(null);
 const focusIndex = ref(19);
 const moves = computed(() => new Set(props.legal));
 const suggestion = computed<number | null>(() => props.hintIndex !== null && moves.value.has(props.hintIndex) ? props.hintIndex : null);
-const hintMessage = computed<string>(() => suggestion.value === null ? '' : `힌트: ${'ABCDEFGH'[suggestion.value % 8]}${Math.floor(suggestion.value / 8) + 1}에 놓아보세요.`);
+const hintMessage = computed<string>(() => suggestion.value === null ? '' : `힌트: ${reversiCoordinate(suggestion.value)}에 놓아보세요.`);
 function label(index: number): string {
-  return `${'ABCDEFGH'[index % 8]}${Math.floor(index / 8) + 1}, ${props.board[index] === 'black' ? '흑돌' : props.board[index] === 'white' ? '백돌' : '빈칸'}${moves.value.has(index) ? ', 착수 가능' : ''}${props.lastMove === index ? ', 마지막 착수' : ''}${suggestion.value === index ? ', 힌트 추천' : ''}`;
+  return `${reversiCoordinate(index)}, ${props.board[index] === 'black' ? '흑돌' : props.board[index] === 'white' ? '백돌' : '빈칸'}${moves.value.has(index) ? ', 착수 가능' : ''}${props.lastMove === index ? ', 마지막 착수' : ''}${suggestion.value === index ? ', 힌트 추천' : ''}`;
 }
 const pad = useGamepad(computed(() => props.interactive), {
   direction: direction => moveFocus(direction, focusIndex.value),
@@ -31,8 +32,16 @@ function focusCell(): void {
   grid.value?.querySelector<HTMLButtonElement>(`[data-cell="${focusIndex.value}"]`)?.focus({ preventScroll: true });
 }
 function moveFocus(key: string, index: number): boolean {
-  const row = Math.floor(index / 8), col = index % 8;
-  const targets: Record<string, number> = { ArrowLeft: row * 8 + (col + 7) % 8, ArrowRight: row * 8 + (col + 1) % 8, ArrowUp: ((row + 7) % 8) * 8 + col, ArrowDown: ((row + 1) % 8) * 8 + col, Home: row * 8, End: row * 8 + 7 };
+  const size = REVERSI_SIZE;
+  const row = Math.floor(index / size), col = index % size;
+  const targets: Record<string, number> = {
+    ArrowLeft: row * size + (col + size - 1) % size,
+    ArrowRight: row * size + (col + 1) % size,
+    ArrowUp: ((row + size - 1) % size) * size + col,
+    ArrowDown: ((row + 1) % size) * size + col,
+    Home: row * size,
+    End: row * size + size - 1,
+  };
   if (!(key in targets)) return false;
   focusIndex.value = targets[key];
   focusCell();
@@ -43,12 +52,12 @@ function navigate(event: KeyboardEvent, index: number): void {
 }
 </script>
 <template>
-  <div class="board-input">
+  <div class="board-input" :style="{ '--board-size': REVERSI_SIZE }">
   <div class="board-frame">
-    <div class="coordinates top" aria-hidden="true"><span v-for="letter in 'ABCDEFGH'" :key="letter">{{ letter }}</span></div>
-    <div class="coordinates side" aria-hidden="true"><span v-for="n in 8" :key="n">{{ n }}</span></div>
+    <div class="coordinates top" aria-hidden="true"><span v-for="letter in REVERSI_COLUMNS" :key="letter">{{ letter }}</span></div>
+    <div class="coordinates side" aria-hidden="true"><span v-for="n in REVERSI_SIZE" :key="n">{{ n }}</span></div>
     <div ref="grid" class="board" role="group" aria-label="리버시 보드. 방향키로 이동하고 Enter 또는 Space로 착수하세요.">
-      <button v-for="(cell, index) in board" :key="index" type="button" class="cell" :class="{ legal: moves.has(index), playable: interactive && moves.has(index), last: lastMove === index, 'pad-cursor': pad.active.value && interactive && focusIndex === index }" :data-cell="index" :data-legal="moves.has(index)" :aria-label="label(index)" :aria-disabled="!interactive || !moves.has(index)" :tabindex="focusIndex === index ? 0 : -1" @focus="focusIndex = index" @keydown="navigate($event, index)" @click="interactive && moves.has(index) && emit('move', index)">
+      <button v-for="(cell, index) in board" :key="index" type="button" class="cell" :class="{ 'last-column': (index + 1) % REVERSI_SIZE === 0, 'last-row': index >= REVERSI_CELL_COUNT - REVERSI_SIZE, legal: moves.has(index), playable: interactive && moves.has(index), last: lastMove === index, 'pad-cursor': pad.active.value && interactive && focusIndex === index }" :data-cell="index" :data-legal="moves.has(index)" :aria-label="label(index)" :aria-disabled="!interactive || !moves.has(index)" :tabindex="focusIndex === index ? 0 : -1" @focus="focusIndex = index" @keydown="navigate($event, index)" @click="interactive && moves.has(index) && emit('move', index)">
         <span v-if="cell" :key="`${index}-${flipped.includes(index) ? revision : 0}`" class="disc" :class="[cell, { flip: flipped.includes(index), placed: lastMove === index }]" :style="{ '--flip-delay': `${Math.max(0, flipped.indexOf(index)) * 14}ms` }"><span v-if="lastMove === index" class="last-dot" /></span>
         <span v-else-if="suggestion === index" class="suggestion-marker" aria-hidden="true"><AppIcon name="hint" /></span>
         <span v-else-if="moves.has(index)" class="hint"><span /></span>
@@ -64,10 +73,10 @@ function navigate(event: KeyboardEvent, index: number): void {
 <style scoped lang="scss">
 .cell.pad-cursor { outline: 3px solid #ffe4a1; outline-offset: -4px; z-index: 2; background: #e9d69725; }
 .board-frame { position: relative; padding: 27px 17px 25px 27px; background: #315548; border: 1px solid #214237; border-radius: 15px; box-shadow: 0 5px 0 #213e32, 0 14px 26px #243e3217; width: 100%; }
-.board { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); aspect-ratio: 1; border: 1px solid #1b3d32; border-radius: 3px; background: #47765b; }
+.board { display: grid; grid-template-columns: repeat(var(--board-size), minmax(0, 1fr)); aspect-ratio: 1; border: 1px solid #1b3d32; border-radius: 3px; background: #47765b; }
 .cell { display: grid; place-items: center; aspect-ratio: 1; position: relative; border-right: 1px solid #274f3e8c; border-bottom: 1px solid #274f3e8c; min-width: 0; perspective: 500px; }
-.cell:nth-child(8n) { border-right: 0; }
-.cell:nth-child(n+57) { border-bottom: 0; }
+.cell.last-column { border-right: 0; }
+.cell.last-row { border-bottom: 0; }
 .cell.playable:hover { background: #bdd49b25; }
 .cell:focus-visible { outline-offset: -4px; outline-color: #e9d697; z-index: 2; }
 .disc { width: 79%; height: 79%; border-radius: 50%; position: relative; z-index: 1; backface-visibility: visible; }
@@ -83,8 +92,8 @@ function navigate(event: KeyboardEvent, index: number): void {
 .suggestion-marker svg { width: 62%; height: 62%; }
 .board-star { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: #254d3a; right: -3px; bottom: -3px; }
 .coordinates { position: absolute; display: grid; color: var(--board-text); font-family: ui-monospace, monospace; font-size: var(--text-caption); text-align: center; }
-.top { grid-template-columns: repeat(8, 1fr); top: 5px; left: 27px; right: 17px; }
-.side { grid-template-rows: repeat(8, 1fr); top: 27px; bottom: 25px; left: 10px; align-items: center; }
+.top { grid-template-columns: repeat(var(--board-size), 1fr); top: 5px; left: 27px; right: 17px; }
+.side { grid-template-rows: repeat(var(--board-size), 1fr); top: 27px; bottom: 25px; left: 10px; align-items: center; }
 .board-label { position: absolute; bottom: 5px; left: 0; width: 100%; text-align: center; color: var(--board-text); font-family: ui-monospace, monospace; font-size: var(--text-micro); letter-spacing: .04em; }
 @keyframes flip { 0% { transform: rotateY(180deg) scale(.9); filter: brightness(.7); } 100% { transform: rotateY(0); } }
 @keyframes place { from { transform: translateY(-9px) scale(.85); opacity: .4; } }

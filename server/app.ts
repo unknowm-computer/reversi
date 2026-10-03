@@ -4,7 +4,8 @@ import { resolve, extname, sep } from 'node:path';
 import { randomInt, randomUUID } from 'node:crypto';
 import { Server, type Socket } from 'socket.io';
 import { commandSchema, type ClientEvents, type ServerEvents, type RoomSnapshot, type CommandResponse, type TimeoutState } from '../shared/protocol.js';
-import { applyMove, endGame, initialState } from '../shared/game/rules.js';
+import { applyMove, boardCellCount, initialState } from '../shared/game/engine.js';
+import { endGame } from '../shared/game/state.js';
 import type { Color, GameSettings, GameState } from '../shared/game/types.js';
 import { otherCharacter, TIMEOUT_PENALTY_MS } from '../shared/game/types.js';
 interface Player { color: Color; token: string; socketId: string | null; disconnectedAt: number | null; ready: boolean; rematch: boolean }
@@ -38,7 +39,7 @@ export function createGameServer(options: ServerOptions = {}): { http: HttpServe
   function publish(room: Room): void { room.revision++; io.to(room.code).emit('room:state', snapshot(room)); }
   function start(room: Room): void {
     room.timeout = null;
-    room.game = initialState(randomUUID());
+    room.game = initialState(randomUUID(), room.settings.gameType);
     room.deadline = room.settings.seconds ? nowMillis() + room.settings.seconds * 1000 : null;
     for (const player of room.players) player.rematch = false;
     room.requests.clear();
@@ -162,6 +163,7 @@ export function createGameServer(options: ServerOptions = {}): { http: HttpServe
           }
           room.deadline = null;
         } else if (command.type === 'move') {
+          if (command.index >= boardCellCount(room.settings.gameType)) { reject('INVALID_COMMAND', '게임판 밖에는 돌을 놓을 수 없습니다.'); return; }
           if (room.timeout) { reject('TIMEOUT_PENDING', '시간 초과 선택과 꿀밤 연출이 끝난 후 착수해 주세요.'); return; }
           if (room.game.turn !== player.color || room.players.some(p => !p.socketId)) { reject('NOT_YOUR_TURN', '지금은 착수할 수 없습니다.'); return; }
           const next = applyMove(room.game, command.index);

@@ -1,10 +1,39 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { useGameStore } from '../src/stores/game';
-import { initialState, legalMoves } from '../shared/game/rules';
+import { initialState, legalMoves } from '../shared/games/reversi/rules';
 import { DEFAULT_SETTINGS, type Cell } from '../shared/game/types';
 beforeEach(() => setActivePinia(createPinia()));
 describe('Undo contracts', () => {
+  it.each(['black', 'white'] as const)('leaves the %s turn and undo history intact when a Gomoku double three is rejected', color => {
+    const store = useGameStore();
+    store.start({ ...DEFAULT_SETTINGS, gameType: 'gomoku', mode: 'local', undoLimit: 3 });
+    store.state.turn = color;
+    for (const index of [111, 113, 97, 127]) store.state.board[index] = color;
+    const before = JSON.stringify(store.state);
+    expect(store.move(112, 23000)).toBe(false);
+    expect(JSON.stringify(store.state)).toBe(before);
+    expect(store.history).toHaveLength(0);
+    expect(store.undoUsed).toEqual({ black: 0, white: 0 });
+    expect(store.move(0, 21000)).toBe(true);
+    expect(store.undo()).toEqual({ actor: color, remaining: 21000 });
+    expect(store.state.board[112]).toBeNull();
+    expect(store.state.turn).toBe(color);
+  });
+  it('restores a Gomoku win to the winning player’s previous turn and clears its winning line', () => {
+    const store = useGameStore();
+    store.start({ ...DEFAULT_SETTINGS, gameType: 'gomoku', mode: 'local', undoLimit: 3 });
+    for (const move of [112, 0, 113, 2, 114, 4, 115, 6, 116]) expect(store.move(move, 23000)).toBe(true);
+    expect(store.state.result?.reason).toBe('fiveInRow');
+    expect(store.canUndo).toBe(true);
+    expect(store.undo()).toEqual({ actor: 'black', remaining: 23000 });
+    expect(store.state.result).toBeNull();
+    expect(store.state.winningLine).toEqual([]);
+    expect(store.state.board[116]).toBeNull();
+    expect(store.state.turn).toBe('black');
+    expect(store.state.gameType).toBe('gomoku');
+    expect(store.undoUsed.black).toBe(1);
+  });
   it('restores a local player’s own move and charges only their allowance', () => {
     const store = useGameStore(); store.start({ ...DEFAULT_SETTINGS, mode: 'local', undoLimit: 1 });
     const board = [...store.state.board];

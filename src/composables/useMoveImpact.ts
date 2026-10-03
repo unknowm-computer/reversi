@@ -4,6 +4,7 @@ import type { Color, GameState } from '../../shared/game/types';
 export const IMPACT_MS = 1400;
 export const LARGE_CAPTURE = 5;
 export function impactKind(before: GameState, next: GameState): 'capture' | null {
+  if (before.gameType !== 'reversi' || next.gameType !== 'reversi') return null;
   if (before.gameId !== next.gameId || next.revision !== before.revision + 1 || next.lastMove === null || before.board[next.lastMove] !== null || !next.flipped.length) return null;
   return next.flipped.length >= LARGE_CAPTURE ? 'capture' : null;
 }
@@ -17,7 +18,7 @@ export function useMoveImpact(state: () => GameState, onStart?: () => void) {
     scene.value = null; preview.value = null; busy.value = false;
   }
   watch(state, (next, before) => {
-    if (before.gameId === next.gameId && before.revision === next.revision) return;
+    if (before.gameType === next.gameType && before.gameId === next.gameId && before.revision === next.revision) return;
     cancel();
     const kind = impactKind(before, next);
     if (!kind || document.hidden) return;
