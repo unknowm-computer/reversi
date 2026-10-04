@@ -16,6 +16,20 @@ export function useGameAudio() {
     osc.connect(gain).connect(target); osc.start(start); osc.stop(start + duration + 0.03);
     voices.add(osc); osc.onended = () => { voices.delete(osc); osc.disconnect(); gain.disconnect(); };
   }
+  function laugh(): void {
+    if (!context || !master) return;
+    // Two little chuckles in the same soft instrument as the music, with a quieter ending.
+    const notes = [
+      { offset: 0, pitch: 392, duration: .075, volume: .2 },
+      { offset: .105, pitch: 392, duration: .08, volume: .175 },
+      { offset: .275, pitch: 440, duration: .075, volume: .2125 },
+      { offset: .375, pitch: 392, duration: .08, volume: .1875 },
+      { offset: .5, pitch: 330, duration: .13, volume: .1375 },
+    ];
+    for (const note of notes) {
+      tone(note.pitch, context.currentTime + note.offset, note.duration, note.volume, master, 'triangle');
+    }
+  }
   function clearVoices(): void { for (const voice of voices) { try { voice.stop(); } catch { /* Already ended. */ } } voices.clear(); }
   function changeScene(next: Scene): void {
     if (scene === next && music) return;
@@ -61,16 +75,16 @@ export function useGameAudio() {
       });
       return;
     }
-    if (kind === 'laugh' || kind === 'whistle') {
-      const notes = kind === 'laugh' ? [190, 165, 200, 155, 175, 140] : [1175, 1568, 1397, 1760, 1568];
-      notes.forEach((note, index) => {
-        const start = context!.currentTime + index * (kind === 'laugh' ? .17 : .22);
+    if (kind === 'laugh') { laugh(); return; }
+    if (kind === 'whistle') {
+      [1175, 1568, 1397, 1760, 1568].forEach((note, index) => {
+        const start = context!.currentTime + index * .22;
         const osc = context!.createOscillator(), gain = context!.createGain();
-        osc.type = kind === 'laugh' ? 'triangle' : 'sine';
-        osc.frequency.setValueAtTime(note * (kind === 'laugh' ? 1.35 : .88), start);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(note * .88, start);
         osc.frequency.exponentialRampToValueAtTime(note, start + .07);
-        osc.frequency.exponentialRampToValueAtTime(note * (kind === 'laugh' ? .72 : 1.04), start + .16);
-        gain.gain.setValueAtTime(0, start); gain.gain.linearRampToValueAtTime(kind === 'laugh' ? .2 : .11, start + .025);
+        osc.frequency.exponentialRampToValueAtTime(note * 1.04, start + .16);
+        gain.gain.setValueAtTime(0, start); gain.gain.linearRampToValueAtTime(.11, start + .025);
         gain.gain.exponentialRampToValueAtTime(.001, start + .19);
         osc.connect(gain).connect(master!); osc.start(start); osc.stop(start + .21);
         voices.add(osc); osc.onended = () => { voices.delete(osc); osc.disconnect(); gain.disconnect(); };

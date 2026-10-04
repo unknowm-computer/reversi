@@ -21,6 +21,11 @@ export function snapshotGameState(state: GameState): GameState {
     flipped: [...state.flipped],
     passed: state.passed,
     result: state.result ? { winner: state.result.winner, reason: state.result.reason } : null,
+    ...(state.pieces ? { pieces: state.pieces.map(piece => piece ? { ...piece } : null) } : {}),
+    ...(state.lastFrom !== undefined ? { lastFrom: state.lastFrom } : {}),
+    ...(state.check !== undefined ? { check: state.check } : {}),
+    ...(state.chess ? { chess: { ...state.chess, positionHistory: [...state.chess.positionHistory] } } : {}),
+    ...(state.janggi ? { janggi: { ...state.janggi, positionHistory: [...state.janggi.positionHistory] } } : {}),
   };
 }
 

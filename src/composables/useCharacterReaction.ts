@@ -1,8 +1,9 @@
 import { computed, ref } from 'vue';
 import { impactKind, LARGE_CAPTURE } from './useMoveImpact';
+import { capturedPieceCount, isPieceMove } from '../../shared/game/piece-events';
 import { opposite, score } from '../../shared/game/state';
 import { REVERSI_CORNERS } from '../../shared/games/reversi/board';
-import { otherCharacter, type Character, type Color, type GameState, type Reaction } from '../../shared/game/types';
+import { isPieceGame, otherCharacter, type Character, type Color, type GameState, type Reaction } from '../../shared/game/types';
 export function useCharacterReaction() {
   const reactions = ref<Record<Color, Reaction>>({ black: 'idle', white: 'idle' });
   const until = ref(0);
@@ -19,6 +20,20 @@ export function useCharacterReaction() {
       event.value = 'end';
       for (const color of ['black', 'white'] as const) reactions.value[color] = next.result.winner === null ? 'draw' : next.result.winner === color ? 'win' : 'lose';
       until.value = Infinity;
+    } else if (isPieceGame(before.gameType) && isPieceMove(before, next)
+      && !(typeof document !== 'undefined' && document.hidden)) {
+      const captured = capturedPieceCount(before, next) > 0;
+      const checking = impactKind(before, next) !== null;
+      if (captured || checking) {
+        const character = actor === 'black' ? blackCharacter : otherCharacter(blackCharacter);
+        reactions.value[actor] = character === 'jannabi' ? 'sly' : 'whistle';
+        reactions.value[rival] = 'annoyed';
+        if (captured) {
+          event.value = character === 'jannabi' ? 'laugh' : 'whistle';
+          message.value = character === 'jannabi' ? '이 말은 내가 데려갈게! 흐흐흐…' : '한 수 잘 풀렸네, 휘~♪';
+        }
+        if (checking) message.value = `${next.gameType === 'chess' ? '체크' : '장군'}! 메~롱, 다음 수는 어떨까?`;
+      }
     } else if (isReversi) {
       const a = score(before.board), b = score(next.board);
       if (next.passed) {

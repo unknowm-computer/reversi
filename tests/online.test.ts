@@ -38,6 +38,18 @@ function nextState(socket: Client, predicate: (room: RoomSnapshot) => boolean): 
     socket.on('room:state', listener);
   });
 }
+async function enterRematchSetup(black: Client, white: Client, room: RoomSnapshot): Promise<RoomSnapshot> {
+  const game = room.game!;
+  const finished = game.result ? room : (await command(black, {
+    type: 'resign', requestId: randomUUID(), gameId: game.gameId, expectedRevision: game.revision,
+  })).room!;
+  const base = { type: 'rematch' as const, gameId: game.gameId, expectedRevision: finished.game!.revision };
+  await command(black, { ...base, requestId: randomUUID() });
+  const response = await command(white, { ...base, requestId: randomUUID() });
+  expect(response.ok).toBe(true);
+  expect(response.room!.rematchSetup).toBe('editing');
+  return response.room!;
+}
 describe('Authoritative online games', () => {
   it('synchronizes both players and rejects turn theft, invalid moves, stale and duplicate requests', async () => {
     const { black, white, room } = await setup();
@@ -68,14 +80,40 @@ describe('Authoritative online games', () => {
     const ended = nextState(white, room => room.game?.result?.reason === 'disconnect'); black.disconnect();
     expect((await ended).game!.result!.winner).toBe('white');
   });
-  it('requires both players to consent before a rematch', async () => {
-    const { black, white, room } = await setup();
+  it('requires consent, settings confirmation and guest readiness before starting a fresh rematch timer', async () => {
+    const { black, white, room, advance } = await setup(30000, 30);
     const resigned = await command(black, { type: 'resign', requestId: randomUUID(), gameId: room.game!.gameId, expectedRevision: 0 });
     const base = { gameId: room.game!.gameId, expectedRevision: resigned.room!.game!.revision };
     const first = await command(black, { type: 'rematch', requestId: randomUUID(), ...base });
     expect(first.room!.game!.result).not.toBeNull();
+    expect(first.room!.rematchSetup).toBeNull();
+    const synced = nextState(black, snapshot => snapshot.rematchSetup === 'editing');
     const second = await command(white, { type: 'rematch', requestId: randomUUID(), ...base });
-    expect(second.room!.game!.result).toBeNull(); expect(second.room!.game!.gameId).not.toBe(base.gameId);
+    expect(await synced).toEqual(second.room);
+    expect(second.room!.game).toBeNull();
+    expect(second.room!.deadline).toBeNull();
+    expect(second.room!.timeout).toBeNull();
+    expect(second.room!.settings).toEqual(room.settings);
+    expect(second.room!.players.every(player => !player.ready && !player.rematch)).toBe(true);
+    for (const client of [black, white]) expect((await command(client, { type: 'ready', requestId: randomUUID() })).errorCode).toBe('SETTINGS_PENDING');
+
+    advance(60001);
+    const confirmed = await command(black, {
+      type: 'configure-rematch', requestId: randomUUID(), expectedRoomRevision: second.room!.revision,
+      settings: { ...room.settings, mode: 'online', undoLimit: 0, seconds: 60 },
+    });
+    expect(confirmed.ok).toBe(true);
+    expect(confirmed.room!.rematchSetup).toBe('ready');
+    expect(confirmed.room!.game).toBeNull();
+    expect(confirmed.room!.deadline).toBeNull();
+    expect(confirmed.room!.players.map(player => player.ready)).toEqual([true, false]);
+    advance(60001);
+    const ready = await command(white, { type: 'ready', requestId: randomUUID() });
+    expect(ready.room!.game!.result).toBeNull();
+    expect(ready.room!.game!.gameId).not.toBe(base.gameId);
+    expect(ready.room!.rematchSetup).toBeNull();
+    expect(ready.room!.settings.seconds).toBe(60);
+    expect(ready.room!.deadline! - ready.room!.serverNow).toBe(60000);
   });
   it('plays an entire game with identical results for both clients', async () => {
     const { black, white, room } = await setup(); let game = room.game!;
@@ -124,6 +162,105 @@ describe('Authoritative online games', () => {
     const reconnect = await connect(); advance(1000);
     const result = await command(reconnect, { type: 'resume', requestId: randomUUID(), code: room.code, token: created.token! });
     expect(result.errorCode).toBe('ROOM_EXPIRED');
+  });
+});
+
+describe('Online rematch settings', () => {
+  it('allows only the host to configure a rematch and preserves the room game and characters', async () => {
+    const { black, white, room } = await setup();
+    const settings = { ...room.settings, mode: 'online' as const, undoLimit: 0 as const };
+    const activeRequest: Command = { type: 'configure-rematch', requestId: randomUUID(), expectedRoomRevision: room.revision, settings };
+    expect((await command(black, activeRequest)).errorCode).toBe('SETTINGS_LOCKED');
+    const editing = await enterRematchSetup(black, white, room);
+    const request: Command = { ...activeRequest, requestId: randomUUID(), expectedRoomRevision: editing.revision };
+    expect((await command(white, request)).errorCode).toBe('NOT_HOST');
+    for (const client of [black, white]) {
+      expect((await command(client, { type: 'character', requestId: randomUUID(), character: 'grasshopper' })).errorCode).toBe('SETTINGS_LOCKED');
+    }
+    for (const invalid of [
+      { ...settings, gameType: 'gomoku' as const },
+      { ...settings, blackCharacter: settings.blackCharacter === 'jannabi' ? 'grasshopper' as const : 'jannabi' as const },
+    ]) {
+      expect((await command(black, { ...request, requestId: randomUUID(), settings: invalid })).errorCode).toBe('INVALID_SETTINGS');
+    }
+    for (const invalid of [{ ...settings, seconds: 15 }, { ...settings, undoLimit: 3 }, { ...settings, mode: 'local' }]) {
+      expect((await command(black, { ...request, requestId: randomUUID(), settings: invalid } as unknown as Command)).errorCode).toBe('INVALID_COMMAND');
+    }
+    const stale = await command(black, { ...request, expectedRoomRevision: editing.revision - 1 });
+    expect(stale.errorCode).toBe('STALE_ROOM');
+    expect(stale.room).toEqual({ ...editing, serverNow: stale.room!.serverNow });
+    const accepted = await command(black, request);
+    expect(accepted.ok).toBe(true);
+    expect(accepted.room!.settings).toEqual(settings);
+    expect(accepted.room!.code).toBe(room.code);
+  });
+
+  it('does not publish or start again when consent and settings requests are retried', async () => {
+    const { black, white, room } = await setup();
+    const resigned = await command(black, { type: 'resign', requestId: randomUUID(), gameId: room.game!.gameId, expectedRevision: 0 });
+    const base = { type: 'rematch' as const, gameId: room.game!.gameId, expectedRevision: resigned.room!.game!.revision };
+    const hostRequest: Command = { ...base, requestId: randomUUID() };
+    const guestRequest: Command = { ...base, requestId: randomUUID() };
+    await command(black, hostRequest);
+    const editing = (await command(white, guestRequest)).room!;
+    for (const [client, request] of [[black, hostRequest], [white, guestRequest]] as const) {
+      const duplicate = await command(client, request);
+      expect(duplicate.ok).toBe(true);
+      expect(duplicate.room!.revision).toBe(editing.revision);
+      expect(duplicate.room!.rematchSetup).toBe('editing');
+    }
+    const configure: Command = {
+      type: 'configure-rematch', requestId: randomUUID(), expectedRoomRevision: editing.revision,
+      settings: { ...editing.settings, mode: 'online', undoLimit: 0, seconds: 60 },
+    };
+    const confirmed = await command(black, configure);
+    const duplicate = await command(black, configure);
+    expect(duplicate.ok).toBe(true);
+    expect(duplicate.room).toEqual({ ...confirmed.room, serverNow: duplicate.room!.serverNow });
+    const stale = await command(black, { ...configure, requestId: randomUUID() });
+    expect(stale.errorCode).toBe('STALE_ROOM');
+    expect(stale.room!.rematchSetup).toBe('ready');
+    expect((await command(black, { ...configure, requestId: randomUUID(), expectedRoomRevision: confirmed.room!.revision })).errorCode).toBe('SETTINGS_LOCKED');
+    expect(confirmed.room!.game).toBeNull();
+  });
+
+  it('restores editing after reconnect and requires fresh readiness when a confirmed host disconnects', async () => {
+    const { black, white, room, created, joined, connect, advance } = await setup();
+    const editing = await enterRematchSetup(black, white, room);
+    const guestDisconnected = nextState(black, snapshot => !snapshot.players[1].connected);
+    white.disconnect();
+    await guestDisconnected;
+    const newGuest = await connect();
+    const restored = await command(newGuest, { type: 'resume', requestId: randomUUID(), code: room.code, token: joined.token! });
+    expect(restored.room!.rematchSetup).toBe('editing');
+    expect(restored.room!.game).toBeNull();
+    const stale = await command(black, {
+      type: 'configure-rematch', requestId: randomUUID(), expectedRoomRevision: editing.revision,
+      settings: { ...editing.settings, mode: 'online', undoLimit: 0, seconds: 30 },
+    });
+    expect(stale.errorCode).toBe('STALE_ROOM');
+    const confirmed = await command(black, {
+      type: 'configure-rematch', requestId: randomUUID(), expectedRoomRevision: restored.room!.revision,
+      settings: { ...editing.settings, mode: 'online', undoLimit: 0, seconds: 30 },
+    });
+    expect(confirmed.room!.players[0].ready).toBe(true);
+    const hostDisconnected = nextState(newGuest, snapshot => !snapshot.players[0].connected);
+    black.disconnect();
+    const disconnected = await hostDisconnected;
+    expect(disconnected.players[0].ready).toBe(false);
+    const guestReady = await command(newGuest, { type: 'ready', requestId: randomUUID() });
+    expect(guestReady.room!.game).toBeNull();
+    expect(guestReady.room!.deadline).toBeNull();
+    advance(31000);
+    const newHost = await connect();
+    const resumed = await command(newHost, { type: 'resume', requestId: randomUUID(), code: room.code, token: created.token! });
+    expect(resumed.room!.rematchSetup).toBe('ready');
+    expect(resumed.room!.players.map(player => player.ready)).toEqual([false, true]);
+    expect(resumed.room!.game).toBeNull();
+    const started = await command(newHost, { type: 'ready', requestId: randomUUID() });
+    expect(started.room!.rematchSetup).toBeNull();
+    expect(started.room!.game!.result).toBeNull();
+    expect(started.room!.deadline! - started.room!.serverNow).toBe(30000);
   });
 });
 
@@ -237,7 +374,13 @@ describe('Online game selection', () => {
     expect(state.winningLine).toEqual([112, 113, 114, 115, 116]);
     const base = { type: 'rematch' as const, gameId: state.gameId, expectedRevision: state.revision };
     await command(black, { ...base, requestId: randomUUID() });
-    const response = await command(white, { ...base, requestId: randomUUID() });
+    const editing = await command(white, { ...base, requestId: randomUUID() });
+    expect(editing.room!.game).toBeNull();
+    await command(black, {
+      type: 'configure-rematch', requestId: randomUUID(), expectedRoomRevision: editing.room!.revision,
+      settings: { ...editing.room!.settings, mode: 'online', undoLimit: 0 },
+    });
+    const response = await command(white, { type: 'ready', requestId: randomUUID() });
     expect(response.room!.settings.gameType).toBe('gomoku');
     expect(response.room!.settings.seconds).toBe(60);
     expect(response.room!.game!.board).toEqual(Array(225).fill(null));

@@ -10,6 +10,7 @@ export function useOnlineRoom(onState: (room: RoomSnapshot) => void, onClosed: (
   const connected = ref(false), busy = ref(false), error = ref('');
   let socket: Socket<ServerEvents, ClientEvents> | null = null;
   let session: Session | null = null;
+  let leaving = false;
   try { const saved = sessionStorage.getItem('reversi-session'); if (saved) session = JSON.parse(saved) as Session; } catch { /* Storage can be unavailable in private browsing. */ }
   function save(): void { try { if (session) sessionStorage.setItem('reversi-session', JSON.stringify(session)); else sessionStorage.removeItem('reversi-session'); } catch { /* A live session still works without persistence. */ } }
   function receive(next: RoomSnapshot): void {
@@ -42,7 +43,12 @@ export function useOnlineRoom(onState: (room: RoomSnapshot) => void, onClosed: (
     socket.on('disconnect', () => { connected.value = false; });
     socket.on('connect_error', () => { error.value = '서버에 연결할 수 없습니다. 잠시 후 자동으로 다시 시도합니다.'; });
     socket.on('room:state', receive);
-    socket.on('room:closed', message => { session = null; save(); room.value = null; error.value = message; onClosed(); });
+    socket.on('room:closed', message => {
+      session = null; save(); room.value = null;
+      // The server closes the room before acknowledging leave. Let home() finish that transition.
+      if (leaving) { error.value = ''; return; }
+      error.value = message; onClosed();
+    });
     socket.connect();
   }
   async function enter(type: 'create' | 'join', config: GameSettings, code = ''): Promise<void> {
@@ -55,6 +61,11 @@ export function useOnlineRoom(onState: (room: RoomSnapshot) => void, onClosed: (
     }
   }
   function ready(): void { if (!busy.value) void send({ type: 'ready', requestId: createId() }); }
+  function configureRematch(config: GameSettings): void {
+    if (busy.value || !room.value || room.value.rematchSetup !== 'editing' || color.value !== 'black') return;
+    void send({ type: 'configure-rematch', requestId: createId(), expectedRoomRevision: room.value.revision,
+      settings: { ...config, gameType: room.value.settings.gameType ?? 'reversi', blackCharacter: room.value.settings.blackCharacter, mode: 'online', undoLimit: 0 } });
+  }
   function chooseCharacter(character: Character): void { if (!busy.value) void send({ type: 'character', requestId: createId(), character }); }
   function gameCommand(type: 'move' | 'resign' | 'rematch', game: GameState, index = 0): void {
     if (busy.value) return;
@@ -65,12 +76,20 @@ export function useOnlineRoom(onState: (room: RoomSnapshot) => void, onClosed: (
     if (!busy.value) void send({ type: 'timeout-choice', choice, requestId: createId(), gameId: game.gameId, expectedRevision: game.revision });
   }
   async function leave(): Promise<boolean> {
-    if (room.value && connected.value) {
-      const response = await send({ type: 'leave', requestId: createId() });
-      if (!response.ok) return false;
+    if (leaving || busy.value) return false;
+    leaving = true;
+    try {
+      if (room.value && connected.value) {
+        const response = await send({ type: 'leave', requestId: createId() });
+        if (!response.ok && room.value) return false;
+      }
+      // Keep the server connection available for creating or joining the next room.
+      session = null; save(); room.value = null; color.value = 'black'; error.value = '';
+      return true;
+    } finally {
+      leaving = false;
     }
-    session = null; save(); room.value = null; socket?.disconnect(); socket = null; connected.value = false; return true;
   }
   onUnmounted(() => socket?.disconnect());
-  return { room, color, connected, busy, error, hasSession: Boolean(session), connect, enter, ready, chooseCharacter, gameCommand, timeoutChoice, leave };
+  return { room, color, connected, busy, error, hasSession: Boolean(session), connect, enter, ready, configureRematch, chooseCharacter, gameCommand, timeoutChoice, leave };
 }

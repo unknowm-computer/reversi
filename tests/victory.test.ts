@@ -7,6 +7,7 @@ import App from '../src/App.vue';
 import VictoryScene from '../src/components/game/VictoryScene.vue';
 import ResultPanel from '../src/components/game/ResultPanel.vue';
 import SetupPanel from '../src/components/game/SetupPanel.vue';
+import GameSetupForm from '../src/components/game/GameSetupForm.vue';
 import { useGameStore } from '../src/stores/game';
 import { DEFAULT_SETTINGS } from '../shared/game/types';
 let wrapper: VueWrapper | undefined;
@@ -79,6 +80,8 @@ describe('Character victory', () => {
     const pinia = createPinia(); setActivePinia(pinia);
     wrapper = mount(App, { global: { plugins: [pinia] } });
     wrapper.getComponent(SetupPanel).vm.$emit('start', { ...DEFAULT_SETTINGS, mode: 'local', seconds: 0, blackCharacter });
+    await nextTick();
+    await wrapper.getComponent(GameSetupForm).get('form').trigger('submit');
     await nextTick(); const store = useGameStore(); store.finish('black', 'resign'); await nextTick();
     expect(wrapper.getComponent(VictoryScene).props('winner')).toBe(blackCharacter === 'jannabi' ? 'grasshopper' : 'jannabi');
     expect(wrapper.findComponent(ResultPanel).exists()).toBe(false);
@@ -89,6 +92,7 @@ describe('Character victory', () => {
     store.state = { ...store.state }; await nextTick();
     expect(wrapper.findComponent(VictoryScene).exists()).toBe(false);
     wrapper.getComponent(ResultPanel).vm.$emit('rematch'); await nextTick();
+    await wrapper.getComponent(GameSetupForm).get('form').trigger('submit');
     store.finish('black', 'resign'); await nextTick();
     expect(wrapper.findComponent(VictoryScene).exists()).toBe(true);
   });
@@ -97,6 +101,8 @@ describe('Character victory', () => {
     const pinia = createPinia(); setActivePinia(pinia);
     wrapper = mount(App, { global: { plugins: [pinia] } });
     wrapper.getComponent(SetupPanel).vm.$emit('start', { ...DEFAULT_SETTINGS, mode: 'local', seconds: 0, blackCharacter: 'jannabi' });
+    await nextTick();
+    await wrapper.getComponent(GameSetupForm).get('form').trigger('submit');
     await nextTick(); const store = useGameStore();
     store.state = { ...store.state, result: { winner, reason: 'noLegalMoves' } }; await nextTick();
     expect(wrapper.findComponent(VictoryScene).exists()).toBe(false);

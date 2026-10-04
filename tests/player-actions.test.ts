@@ -7,11 +7,13 @@ import App from '../src/App.vue';
 import ModalDialog from '../src/components/common/ModalDialog.vue';
 import PlayerPanel from '../src/components/game/PlayerPanel.vue';
 import SetupPanel from '../src/components/game/SetupPanel.vue';
+import GameSetupForm from '../src/components/game/GameSetupForm.vue';
 import VictoryScene from '../src/components/game/VictoryScene.vue';
 import { useGameStore } from '../src/stores/game';
 import * as gameController from '../src/composables/useGameController';
+import { JANGGI_PASS } from '../shared/game/pieces';
 import { opposite } from '../shared/game/state';
-import { DEFAULT_SETTINGS, TIMEOUT_PENALTY_MS, type Cell, type Color, type GameSettings, type GameState } from '../shared/game/types';
+import { DEFAULT_SETTINGS, TIMEOUT_PENALTY_MS, type Cell, type Color, type GameSettings, type GameState, type Piece } from '../shared/game/types';
 
 let wrapper: VueWrapper | undefined;
 let store: ReturnType<typeof useGameStore>;
@@ -21,8 +23,17 @@ async function start(settings: Partial<GameSettings> = {}): Promise<void> {
   setActivePinia(pinia);
   wrapper = mount(App, { global: { plugins: [pinia] } });
   store = useGameStore();
-  wrapper.getComponent(SetupPanel).vm.$emit('start', { ...DEFAULT_SETTINGS, mode: 'local', seconds: 0, ...settings });
+  const selected: GameSettings = { ...DEFAULT_SETTINGS, mode: 'local', seconds: 0, ...settings };
+  const localPreparation: GameSettings = { ...selected, mode: selected.mode === 'online' ? 'local' : selected.mode };
+  wrapper.getComponent(SetupPanel).vm.$emit('start', localPreparation);
   await nextTick();
+  wrapper.getComponent(GameSetupForm).vm.$emit('confirm', localPreparation);
+  await nextTick();
+  // Online panel tests inject a room snapshot without opening a real network connection.
+  if (selected.mode === 'online') {
+    store.start(selected);
+    await nextTick();
+  }
 }
 
 function action(color: Color, text: string): DOMWrapper<HTMLButtonElement> {
@@ -67,19 +78,23 @@ afterEach(() => {
 });
 
 describe('Turn-based player actions', () => {
-  it('selects a solo character and difficulty, then restarts from the header with the same settings', async () => {
+  it('selects a solo character and difficulty, then reviews settings before restarting from the header', async () => {
     const pinia = createPinia(); setActivePinia(pinia);
     wrapper = mount(App, { global: { plugins: [pinia] } }); store = useGameStore();
     const setup = wrapper.getComponent(SetupPanel);
     await setup.findAll('button').find(button => button.text().includes('장난꾸러기 승부사'))!.trigger('click');
-    await setup.get('.settings-row select').setValue('4');
     expect(setup.get('.mode-description').text()).toContain('베짱이와 가볍게');
-    expect(setup.get('.settings-row select').findAll('option')).toHaveLength(5);
+    expect(setup.find('select').exists()).toBe(false);
     await setup.get('.start-button').trigger('click');
+    const details = wrapper.getComponent(GameSetupForm);
+    const difficulty = details.findAll('label').find(label => label.get('span').text() === 'AI 난이도')!.get('select');
+    expect(difficulty.findAll('option')).toHaveLength(5);
+    await difficulty.setValue('4');
+    await details.get('form').trigger('submit');
     expect(store.settings).toMatchObject({ mode: 'ai', blackCharacter: 'jannabi', aiDifficulty: 4 });
     expect(wrapper.find('.restart-button').exists()).toBe(false);
     const originalGame = store.state.gameId;
-    await action('black', '기권하기').trigger('click');
+    await action('black', '기권').trigger('click');
     await dialogAction('기권하기').trigger('click');
     wrapper.getComponent(VictoryScene).vm.$emit('done'); await nextTick();
     wrapper.getComponent(ModalDialog).vm.$emit('close'); await nextTick();
@@ -89,6 +104,8 @@ describe('Turn-based player actions', () => {
     expect(store.settings).toMatchObject({ blackCharacter: 'jannabi', aiDifficulty: 4, seconds: 30 });
     expect(store.state.result).toBeNull();
     expect(store.counts).toEqual({ black: 2, white: 2, empty: 60 });
+    expect(wrapper.getComponent(GameSetupForm).props('settings')).toMatchObject({ aiDifficulty: 4 });
+    await wrapper.getComponent(GameSetupForm).get('form').trigger('submit');
     expect(action('black', '힌트').element.disabled).toBe(false);
     expect(wrapper.find('.restart-button').exists()).toBe(false);
   });
@@ -136,7 +153,7 @@ describe('Turn-based player actions', () => {
     expect(wrapper!.findAllComponents(ModalDialog).some(modal => modal.props('title') === '상대의 결정을 기다리고 있어요')).toBe(false);
   });
 
-  it('shows unlimited solo hints on the board without placing a stone, then clears the hint on a move', async () => {
+  it.each(['reversi', 'janggi'] as const)('shows unlimited solo %s hints without playing, then clears the hint on a move', async gameType => {
     let hintWorker: HintWorker | undefined;
     class HintWorker {
       onmessage: ((event: MessageEvent) => void) | null = null;
@@ -146,23 +163,78 @@ describe('Turn-based player actions', () => {
       terminate(): void {}
     }
     vi.stubGlobal('Worker', HintWorker);
-    await start({ mode: 'ai' });
+    await start({ mode: 'ai', gameType });
+    const recommended = gameType === 'janggi' ? JANGGI_PASS : 19;
+    const marker = gameType === 'janggi' ? '.pass-action.suggested' : '.suggestion-marker';
     const before = JSON.stringify(store.state);
     await action('black', '힌트').trigger('click');
     expect(action('black', '힌트').element.disabled).toBe(true);
-    hintWorker!.onmessage?.({ data: { gameType: hintWorker!.request!.gameType, gameId: hintWorker!.request!.gameId, revision: 0, index: 19 } } as MessageEvent);
+    hintWorker!.onmessage?.({ data: { gameType: hintWorker!.request!.gameType, gameId: hintWorker!.request!.gameId, revision: 0, index: recommended } } as MessageEvent);
     await nextTick();
-    expect(wrapper!.get('[data-cell="19"]').attributes('aria-label')).toContain('힌트 추천');
-    expect(wrapper!.findAll('.suggestion-marker')).toHaveLength(1);
+    if (gameType === 'reversi') expect(wrapper!.get('[data-cell="19"]').attributes('aria-label')).toContain('힌트 추천');
+    else expect(action('black', '쉬기').classes()).toContain('suggested');
+    expect(wrapper!.findAll(marker)).toHaveLength(1);
     expect(JSON.stringify(store.state)).toBe(before);
     for (let i = 0; i < 5; i++) {
       expect(action('black', '힌트').element.disabled).toBe(false);
       await action('black', '힌트').trigger('click');
     }
-    expect(wrapper!.findAll('.suggestion-marker')).toHaveLength(1);
-    await move(19);
-    expect(wrapper!.find('.suggestion-marker').exists()).toBe(false);
+    expect(wrapper!.findAll(marker)).toHaveLength(1);
+    if (gameType === 'janggi') await action('black', '쉬기').trigger('click');
+    else await move(19);
+    expect(wrapper!.find(marker).exists()).toBe(false);
     expect(wrapper!.find('.hint-action').exists()).toBe(false);
+  });
+
+  it('shows Janggi pass on the current player only and ends after both players pass consecutively', async () => {
+    await start({ gameType: 'janggi' });
+    const initialBoard = [...store.state.board];
+    const firstPlayer = wrapper!.findAllComponents(PlayerPanel).find(panel => panel.props('color') === 'black')!;
+    expect(wrapper!.findAll('.pass-action')).toHaveLength(1);
+    expect(action('black', '쉬기').element.disabled).toBe(false);
+
+    await action('black', '쉬기').trigger('click');
+    expect(store.state.turn).toBe('white');
+    expect(store.state.board).toEqual(initialBoard);
+    expect(store.state.result).toBeNull();
+    expect(firstPlayer.find('.pass-action').exists()).toBe(false);
+    expect(action('white', '쉬기').element.disabled).toBe(true);
+    vi.advanceTimersByTime(200);
+    await nextTick();
+
+    firstPlayer.vm.$emit('pass');
+    await nextTick();
+    expect(store.state.revision).toBe(1);
+    expect(action('white', '쉬기').element.disabled).toBe(false);
+    await action('white', '쉬기').trigger('click');
+    expect(store.state.result).toEqual({ winner: null, reason: 'mutualPass' });
+    expect(wrapper!.find('.pass-action').exists()).toBe(false);
+  });
+
+  it('blocks the profile pass in check and changes it to accepting an offered bikjang', async () => {
+    await start({ gameType: 'janggi' });
+    const pieces = Array<Piece | null>(90).fill(null);
+    pieces[76] = { color: 'black', kind: 'general' };
+    pieces[14] = { color: 'white', kind: 'general' };
+    pieces[80] = { color: 'white', kind: 'rook' };
+    store.state = { ...store.state, pieces, board: pieces.map(piece => piece?.color ?? null), check: 'black' };
+    await nextTick();
+    const checkedState = JSON.stringify(store.state);
+    expect(action('black', '쉬기').element.disabled).toBe(true);
+    await action('black', '쉬기').trigger('click');
+    wrapper!.findAllComponents(PlayerPanel).find(panel => panel.props('color') === 'black')!.vm.$emit('pass');
+    await nextTick();
+    expect(JSON.stringify(store.state)).toBe(checkedState);
+
+    pieces[14] = null;
+    pieces[13] = { color: 'white', kind: 'general' };
+    pieces[80] = null;
+    store.state = { ...store.state, pieces: [...pieces], board: pieces.map(piece => piece?.color ?? null), check: null,
+      janggi: { ...store.state.janggi!, bikjang: 'white' } };
+    await nextTick();
+    expect(action('black', '빅장 수락').element.disabled).toBe(false);
+    await action('black', '빅장 수락').trigger('click');
+    expect(store.state.result).toEqual({ winner: null, reason: 'bikjang' });
   });
 
   it.each(['ai', 'local'] as const)('asks for a timeout decision at zero in %s', async mode => {
@@ -196,7 +268,7 @@ describe('Turn-based player actions', () => {
     expect(store.state.turn).toBe(color);
     expect(wrapper!.findAll('.player-actions')).toHaveLength(1);
 
-    await action(color, '기권하기').trigger('click');
+    await action(color, '기권').trigger('click');
     expect(wrapper!.getComponent(ModalDialog).text()).toContain(`${color === 'black' ? '베짱이' : '잔나비'}의 기권`);
     await dialogAction('기권하기').trigger('click');
 
@@ -205,7 +277,7 @@ describe('Turn-based player actions', () => {
 
   it('keeps the selected resigning player when the turn changes before confirmation', async () => {
     await start();
-    await action('black', '기권하기').trigger('click');
+    await action('black', '기권').trigger('click');
     // A state update after opening the dialog must not change whose action is being confirmed.
     expect(store.move(19, 0)).toBe(true);
     await nextTick();
@@ -220,47 +292,48 @@ describe('Turn-based player actions', () => {
     await start({ undoLimit: 3 });
     expect(wrapper!.find('.hint-action').exists()).toBe(false);
     const initialBoard = [...store.state.board];
-    expect(action('black', '한 수 무르기').element.disabled).toBe(true);
-    expect(action('black', '한 수 무르기').text()).toContain('(3)');
+    expect(action('black', '무르기').element.disabled).toBe(true);
+    expect(action('black', '무르기').text()).toContain('(3)');
     expect(wrapper!.findAllComponents(PlayerPanel).find(panel => panel.props('color') === 'white')!.find('button').exists()).toBe(false);
 
     await move(19);
-    expect(action('white', '한 수 무르기').element.disabled).toBe(true);
+    expect(action('white', '무르기').element.disabled).toBe(true);
     expect(wrapper!.findAllComponents(PlayerPanel).find(panel => panel.props('color') === 'black')!.find('button').exists()).toBe(false);
     await move(18);
-    expect(action('black', '한 수 무르기').element.disabled).toBe(false);
-    await action('black', '한 수 무르기').trigger('click');
+    expect(action('black', '무르기').element.disabled).toBe(false);
+    await action('black', '무르기').trigger('click');
     expect(store.state.board).toEqual(initialBoard);
     expect(store.state.turn).toBe('black');
     expect(store.undoUsed).toEqual({ black: 1, white: 0 });
-    expect(action('black', '한 수 무르기').text()).toContain('(2)');
+    expect(action('black', '무르기').text()).toContain('(2)');
   });
 
   it('hides AI controls and allows unlimited human undo once the AI replies', async () => {
     await start({ mode: 'ai' });
     const initialBoard = [...store.state.board];
-    expect(action('black', '한 수 무르기').text()).toContain('(∞)');
+    expect(action('black', '무르기').text()).toContain('(∞)');
     await move(19);
     expect(wrapper!.findAll('.player-actions')).toHaveLength(0);
     store.move(18, 0);
     await nextTick();
-    expect(action('black', '한 수 무르기').element.disabled).toBe(false);
-    await action('black', '한 수 무르기').trigger('click');
+    expect(action('black', '무르기').element.disabled).toBe(false);
+    await action('black', '무르기').trigger('click');
     expect(store.state.board).toEqual(initialBoard);
-    expect(action('black', '한 수 무르기').text()).toContain('(∞)');
+    expect(action('black', '무르기').text()).toContain('(∞)');
   });
 
-  it('never exposes opponent actions online and keeps online undo disabled', async () => {
-    await start({ mode: 'online' });
+  it.each(['reversi', 'janggi'] as const)('never exposes opponent %s actions online and keeps online undo disabled', async gameType => {
+    await start({ mode: 'online', gameType });
     expect(wrapper!.find('.hint-action').exists()).toBe(false);
-    expect(action('black', '한 수 무르기').text()).toContain('(0)');
-    expect(action('black', '한 수 무르기').element.disabled).toBe(true);
-    store.move(19, 0);
+    expect(action('black', '무르기').text()).toContain('(0)');
+    expect(action('black', '무르기').element.disabled).toBe(true);
+    store.move(gameType === 'janggi' ? JANGGI_PASS : 19, 0);
     await nextTick();
     expect(wrapper!.findAll('.player-actions')).toHaveLength(0);
     const opponent = wrapper!.findAllComponents(PlayerPanel).find(panel => panel.props('color') === 'white')!;
     opponent.vm.$emit('resign');
     opponent.vm.$emit('undo');
+    opponent.vm.$emit('pass');
     await nextTick();
     expect(wrapper!.findComponent(ModalDialog).exists()).toBe(false);
     expect(store.history).toHaveLength(1);
@@ -277,9 +350,9 @@ describe('Turn-based player actions', () => {
 
     expect(store.state.passed).toBe('white');
     expect(store.state.turn).toBe('black');
-    expect(action('black', '한 수 무르기').element.disabled).toBe(false);
+    expect(action('black', '무르기').element.disabled).toBe(false);
     expect(wrapper!.findAll('.player-actions')).toHaveLength(1);
-    await action('black', '한 수 무르기').trigger('click');
+    await action('black', '무르기').trigger('click');
     expect(store.state.board).toEqual(board);
     expect(store.undoUsed).toEqual({ black: 1, white: 0 });
   });
@@ -290,16 +363,16 @@ describe('Turn-based player actions', () => {
     await move(18);
     vi.advanceTimersByTime(30000);
     await nextTick();
-    expect(action('black', '한 수 무르기').element.disabled).toBe(true);
-    expect(action('black', '기권하기').element.disabled).toBe(true);
-    await action('black', '한 수 무르기').trigger('click');
+    expect(action('black', '무르기').element.disabled).toBe(true);
+    expect(action('black', '기권').element.disabled).toBe(true);
+    await action('black', '무르기').trigger('click');
     expect(store.history).toHaveLength(2);
 
     await dialogAction('봐준다').trigger('click');
-    expect(action('black', '한 수 무르기').element.disabled).toBe(true);
+    expect(action('black', '무르기').element.disabled).toBe(true);
     vi.advanceTimersByTime(TIMEOUT_PENALTY_MS);
     await nextTick();
-    expect(action('black', '한 수 무르기').element.disabled).toBe(false);
+    expect(action('black', '무르기').element.disabled).toBe(false);
     expect(wrapper!.findAll('.player-actions')).toHaveLength(1);
   });
 });

@@ -7,9 +7,10 @@ interface Props {
   rematchRequested: boolean;
   rematchDisabled: boolean;
   soundEnabled: boolean;
+  compact?: boolean;
 }
 
-defineProps<Props>();
+withDefaults(defineProps<Props>(), { compact: false });
 const emit = defineEmits<{
   (event: 'home'): void;
   (event: 'rematch'): void;
@@ -19,7 +20,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <header class="site-header">
+  <header class="site-header" :class="{ compact }">
     <button class="brand" aria-label="잔나비와 베짱이 시작 화면" @click="emit('home')">
       <span class="brand-mark"><i /><i /></span>
       <span class="brand-name">잔나비와 베짱이<small>THE LITTLE BOARD GAME CLUB</small></span>
@@ -32,7 +33,7 @@ const emit = defineEmits<{
         v-if="showRematch"
         class="text-button nav-link restart-button"
         :aria-label="rematchRequested ? '상대의 재대결 동의를 기다리는 중' : '다시하기'"
-        :title="rematchRequested ? '상대의 재대결 동의를 기다리는 중' : '같은 설정으로 다시하기'"
+        :title="rematchRequested ? '상대의 재대결 동의를 기다리는 중' : '설정을 확인하고 다시하기'"
         :disabled="rematchDisabled"
         @click="emit('rematch')"
       >
@@ -64,6 +65,7 @@ const emit = defineEmits<{
   height: 100px;
   border-bottom: 1px solid var(--line);
 }
+.site-header.compact { height: 72px; }
 .brand { display: flex; align-items: center; gap: 13px; text-align: left; }
 .brand-mark { width: 36px; height: 36px; position: relative; }
 .brand-mark i { position: absolute; width: 26px; height: 26px; border-radius: 50%; background: var(--green); left: 0; top: 0; }
@@ -79,6 +81,8 @@ nav { display: flex; align-items: center; gap: 17px; }
 
 @media (max-width: $mobile) {
   .site-header { height: 80px; }
+  .site-header.compact { height: 64px; }
+  .site-header.compact .brand-name small { display: none; }
   .brand-name { font-size: var(--text-body); }
   .brand-name small { font-size: var(--text-micro); }
   .brand-mark { width: 31px; }

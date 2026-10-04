@@ -1,10 +1,12 @@
 import { z } from 'zod';
 import type { Color, GameSettings, GameState } from './game/types.js';
-import { GOMOKU_CELL_COUNT } from './games/gomoku/board.js';
+import { MAX_MOVE_CODE } from './game/pieces.js';
+const formationSchema = z.enum(['outer', 'inner', 'left', 'right']);
 const settingsSchema = z.object({
-  gameType: z.enum(['reversi', 'gomoku']).default('reversi'),
+  gameType: z.enum(['reversi', 'gomoku', 'chess', 'janggi']).default('reversi'),
   mode: z.literal('online'), seconds: z.union([z.literal(0), z.literal(30), z.literal(60)]),
   undoLimit: z.literal(0), blackCharacter: z.enum(['jannabi', 'grasshopper']),
+  janggiBlackFormation: formationSchema.optional(), janggiWhiteFormation: formationSchema.optional(),
 });
 const identity = { requestId: z.string().uuid() };
 const gameIdentity = { ...identity, gameId: z.string().uuid(), expectedRevision: z.number().int().nonnegative() };
@@ -13,8 +15,9 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('join'), ...identity, code: z.string().regex(/^[A-Z2-9]{6}$/) }),
   z.object({ type: z.literal('resume'), ...identity, code: z.string().regex(/^[A-Z2-9]{6}$/), token: z.string().uuid() }),
   z.object({ type: z.literal('ready'), ...identity }),
+  z.object({ type: z.literal('configure-rematch'), ...identity, expectedRoomRevision: z.number().int().nonnegative(), settings: settingsSchema }),
   z.object({ type: z.literal('character'), ...identity, character: z.enum(['jannabi', 'grasshopper']) }),
-  z.object({ type: z.literal('move'), ...gameIdentity, index: z.number().int().min(0).max(GOMOKU_CELL_COUNT - 1) }),
+  z.object({ type: z.literal('move'), ...gameIdentity, index: z.number().int().min(0).max(MAX_MOVE_CODE) }),
   z.object({ type: z.literal('timeout-choice'), ...gameIdentity, choice: z.enum(['forgive', 'end']) }),
   z.object({ type: z.literal('resign'), ...gameIdentity }),
   z.object({ type: z.literal('rematch'), ...gameIdentity }),
@@ -23,8 +26,10 @@ export const commandSchema = z.discriminatedUnion('type', [
 export type Command = z.infer<typeof commandSchema>;
 export interface RoomPlayer { color: Color; connected: boolean; ready: boolean; rematch: boolean }
 export type TimeoutState = { phase: 'decision'; loser: Color } | { phase: 'penalty'; loser: Color; resumesAt: number };
+export type RematchSetup = 'editing' | 'ready';
 export interface RoomSnapshot {
   timeout: TimeoutState | null;
+  rematchSetup?: RematchSetup | null;
   code: string;
   settings: GameSettings;
   players: RoomPlayer[];

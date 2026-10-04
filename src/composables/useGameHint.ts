@@ -27,7 +27,7 @@ export function useGameHint(getState: () => GameState, canRequest: Readonly<Ref<
 
   function positionKey(): string {
     const state = getState();
-    return JSON.stringify([state.gameType, state.gameId, state.revision, state.turn, state.board, state.result]);
+    return JSON.stringify([state.gameType, state.gameId, state.revision, state.turn, state.board, state.pieces, state.chess, state.janggi, state.result]);
   }
 
   function clear(): void {

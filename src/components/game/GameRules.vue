@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, useId, watch } from 'vue';
 import AppIcon from '../common/AppIcon.vue';
-import { gameName, type GameType } from '../../../shared/game/types';
+import { gameName, isPieceGame, type GameType } from '../../../shared/game/types';
+import PieceGameRules from './PieceGameRules.vue';
 interface Props { gameType?: GameType }
 const props = withDefaults(defineProps<Props>(), { gameType: 'reversi' });
 const emit = defineEmits<{ (event: 'close'): void }>();
 const selectedGame = ref<GameType>(props.gameType);
-const games: readonly GameType[] = ['reversi', 'gomoku'];
+const games: readonly GameType[] = ['reversi', 'gomoku', 'chess', 'janggi'];
 const tabs = ref<HTMLElement | null>(null);
 const id = useId();
 watch(() => props.gameType, gameType => { selectedGame.value = gameType; });
@@ -42,7 +43,8 @@ function navigateTabs(event: KeyboardEvent, index: number): void {
     </div>
     <div :id="`${id}-panel`" class="rules-panel" role="tabpanel" :aria-labelledby="`${id}-tab-${selectedGame}`" tabindex="0">
       <p v-if="selectedGame === 'gomoku'">가로, 세로, 대각선으로 내 돌 다섯 개를 나란히 연결해 보세요.</p>
-      <p v-else>상대 돌을 내 돌 사이에 끼우면 내 색으로 뒤집을 수 있어요.</p>
+      <p v-else-if="selectedGame === 'reversi'">상대 돌을 내 돌 사이에 끼우면 내 색으로 뒤집을 수 있어요.</p>
+      <PieceGameRules v-else :game-type="selectedGame === 'chess' ? 'chess' : 'janggi'" />
       <ol v-if="selectedGame === 'gomoku'">
         <li><strong>흑돌이 먼저 시작해요.</strong><span>15×15 오목판에서 번갈아 한 알씩 놓아요.</span></li>
         <li><strong>선이 만나는 교차점에 놓아요.</strong><span>돌이 없는 교차점 중 금수가 아닌 곳에 놓을 수 있어요. 놓인 돌은 움직이거나 뒤집히지 않아요.</span></li>
@@ -50,39 +52,49 @@ function navigateTabs(event: KeyboardEvent, index: number): void {
         <li><strong>흑·백 모두 3-3·4-4 금수예요.</strong><span>한 수로 두 방향 이상에 열린 3을 동시에 만들거나, 다음 한 수로 오목을 만들 수 있는 4를 둘 이상 만들 수 없어요. 열린 3은 돌 하나를 더 놓아 양 끝이 열린 4를 만들 수 있는 모양이에요.</span></li>
         <li><strong>여섯 개 이상은 장목 금수예요.</strong><span>흑·백 모두 여섯 개 이상 이어지는 수는 놓을 수 없어요. 다른 방향에서 오목을 동시에 완성하더라도 장목이면 금수예요. 승리한 사람 없이 판이 꽉 차면 무승부예요. 빈자리가 남아도 내 차례에 금수로 놓을 곳이 없으면 패배하고, 양쪽 모두 금수로 놓을 곳이 없으면 무승부예요.</span></li>
       </ol>
-      <ol v-else>
+      <ol v-else-if="selectedGame === 'reversi'">
         <li><strong>흑돌이 먼저 시작해요.</strong><span>초록 점으로 표시된 칸에 돌을 놓으세요.</span></li>
         <li><strong>가로, 세로, 대각선 모두 가능해요.</strong><span>하나 이상의 상대 돌을 사이에 끼워야 해요.</span></li>
         <li><strong>놓을 곳이 없으면 한 번 쉬어요.</strong><span>양쪽 모두 놓을 곳이 없으면 대국이 끝나요.</span></li>
         <li><strong>마지막에 돌이 더 많으면 승리!</strong><span>같은 개수면 사이좋게 무승부예요.</span></li>
       </ol>
+      <section aria-labelledby="setup-help-title">
+        <h3 id="setup-help-title">대국 준비</h3>
+        <p>첫 화면에서 모드·게임·캐릭터를 고른 뒤 시작 버튼을 누르세요. 게임판 위에 열리는 설정 팝업에서 난이도·제한 시간·무르기 기회와 장기 포진을 정해요. 대국 시작을 눌러야 시간이 흐르고 수를 둘 수 있어요.</p>
+        <p>온라인은 방을 만들 때 설정하고, 친구는 방 코드로 입장해 같은 설정으로 즐겨요. 선택한 설정은 다음에도 기억해요.</p>
+      </section>
       <section aria-labelledby="board-help-title">
         <h3 id="board-help-title">화면 읽기</h3>
         <p class="help-item"><span class="turn-example"><AppIcon name="turn" /></span>프로필의 초록색 화살표가 현재 차례를 알려줘요.</p>
         <p v-if="selectedGame === 'reversi'" class="help-item"><i class="legend-dot legal" />초록 점은 놓을 수 있는 곳이에요.</p>
-        <p v-else class="help-item"><span class="forbidden-example" aria-hidden="true">×</span>붉은 ×는 현재 차례의 3-3·4-4·장목 금수예요. 그곳에는 놓을 수 없어요.</p>
-        <p class="help-item"><i class="legend-dot last" />금색 점은 마지막으로 놓은 돌이에요.</p>
+        <p v-else-if="selectedGame === 'gomoku'" class="help-item"><span class="forbidden-example" aria-hidden="true">×</span>붉은 ×는 현재 차례의 3-3·4-4·장목 금수예요. 그곳에는 놓을 수 없어요.</p>
+        <p v-else class="help-item"><i class="legend-dot legal" />기물을 고르면 갈 수 있는 곳이 표시돼요. 체크·장군을 받은 왕은 붉게 표시해요.</p>
+        <p v-if="!isPieceGame(selectedGame)" class="help-item"><i class="legend-dot last" />금색 점은 마지막으로 놓은 돌이에요.</p>
+        <p v-else class="help-item"><i class="legend-dot last" />마지막 수의 출발지와 도착지가 강조돼요.</p>
         <p v-if="selectedGame === 'gomoku'">프로필에는 돌 색과 착수 횟수, 남은 시간이 표시돼요. 착수 횟수는 승점이 아니에요. 조작 버튼은 내가 조작할 수 있는 플레이어의 차례에만 나타나요.</p>
+        <p v-else-if="isPieceGame(selectedGame)">프로필에는 진영과 남은 기물 수, 남은 시간이 표시돼요. 기물 수로 승패를 결정하지 않아요. 온라인에서 후공이면 내 진영이 아래에 오도록 보드가 돌아가요.</p>
         <p v-else>프로필에는 돌 색과 개수, 남은 시간이 표시돼요. 조작 버튼은 내가 조작할 수 있는 플레이어의 차례에만 나타나요.</p>
       </section>
       <section aria-labelledby="input-help-title">
-        <h3 id="input-help-title">돌 놓기</h3>
-        <p><strong>마우스·터치</strong> {{ selectedGame === 'gomoku' ? '빈 교차점을 클릭하거나 터치하세요.' : '놓을 수 있는 칸을 클릭하거나 터치하세요.' }}</p>
+        <h3 id="input-help-title">두는 방법</h3>
+        <p><strong>마우스·터치</strong> {{ isPieceGame(selectedGame) ? '내 기물을 선택한 뒤 이동할 곳을 선택하세요. 다른 내 기물을 선택하면 선택을 바꿀 수 있어요.' : selectedGame === 'gomoku' ? '빈 교차점을 클릭하거나 터치하세요.' : '놓을 수 있는 칸을 클릭하거나 터치하세요.' }}</p>
         <p><strong>키보드</strong> 방향키로 이동하고 Enter 또는 Space로 놓으세요.</p>
         <p><strong>조이패드</strong> 연결 후 버튼을 한 번 눌렀다 떼면 인식돼요. 십자키·왼쪽 스틱으로 이동하고 아래쪽 버튼(Xbox A / PlayStation ×)으로 놓으세요. 노란 테두리가 선택한 {{ selectedGame === 'gomoku' ? '교차점' : '칸' }}이에요.</p>
         <p>표준 버튼 배치를 지원하는 패드가 필요해요. 연결되지 않으면 키보드·마우스·터치를 사용할 수 있어요. 설정과 팝업은 마우스·터치·키보드로 조작하세요.</p>
       </section>
       <section aria-labelledby="hint-help-title">
         <h3 id="hint-help-title">혼자 놀기 힌트</h3>
-        <p>혼자 놀기는 원하는 캐릭터와 1~5단계 난이도를 고를 수 있어요. 선택한 캐릭터가 흑돌로 먼저 시작하고, 다른 캐릭터가 AI를 맡아요.</p>
-        <p>내 차례에 프로필의 전구 모양 힌트 버튼을 누르면 추천 {{ selectedGame === 'gomoku' ? '교차점' : '칸' }}에 금색 전구가 나타나요. 횟수 제한 없이 사용할 수 있으며, 돌은 직접 놓으세요. 힌트를 보는 동안에도 제한 시간은 계속 흘러요.</p>
+        <p>혼자 놀기는 원하는 캐릭터와 1~5단계 난이도를 고를 수 있어요. 선택한 캐릭터가 먼저 시작하고, 다른 캐릭터가 AI를 맡아요.</p>
+        <p v-if="isPieceGame(selectedGame)">내 차례에 프로필의 전구 모양 힌트 버튼을 누르면 추천하는 기물과 이동할 곳을 알려줘요. 횟수 제한은 없으며 기물은 직접 옮기세요. 장기에서는 한 수 쉼을 추천할 수도 있어요.</p>
+        <p v-else>내 차례에 프로필의 전구 모양 힌트 버튼을 누르면 추천 {{ selectedGame === 'gomoku' ? '교차점' : '칸' }}에 금색 전구가 나타나요. 횟수 제한 없이 사용할 수 있으며, 돌은 직접 놓으세요.</p>
+        <p>힌트를 보는 동안에도 제한 시간은 계속 흘러요.</p>
         <p>게임이 끝나면 상단의 처음으로 옆에 다시하기가 나타나요. 같은 게임과 설정으로 바로 새 판을 시작하며, 온라인은 두 사람 모두 동의해야 시작돼요.</p>
       </section>
       <section aria-labelledby="undo-help-title">
         <h3 id="undo-help-title">무르기와 기권</h3>
-        <p>한 수 무르기 버튼의 괄호는 남은 횟수예요. ∞는 무제한, 0은 사용할 수 없다는 뜻이에요.</p>
+        <p>무르기 버튼의 괄호는 남은 횟수예요. ∞는 무제한, 0은 사용할 수 없다는 뜻이에요.</p>
         <p>혼자 놀기·함께 놀기는 내 직전 수와 그 뒤 상대가 둔 수를 함께 되돌려요. 혼자 놀기의 무르기는 횟수 제한이 없어요. 함께 놀기에서는 설정한 내 무르기 횟수를 사용하며, 온라인에서는 사용할 수 없어요.</p>
-        <p>기권하기를 누르면 확인 후 내 패배로 대국이 끝나요. 일반 종료 후에는 결과 화면에서 마지막 수를 무를 수 있지만, 기권·시간 초과·온라인 대전은 되돌릴 수 없어요.</p>
+        <p>기권을 누르면 확인 후 내 패배로 대국이 끝나요. 일반 종료 후에는 결과 화면에서 마지막 수를 무를 수 있지만, 기권·시간 초과·온라인 대전은 되돌릴 수 없어요.</p>
       </section>
       <section aria-labelledby="timer-help-title">
         <h3 id="timer-help-title">제한 시간</h3>
@@ -99,8 +111,9 @@ function navigateTabs(event: KeyboardEvent, index: number): void {
   </div>
 </template>
 <style scoped lang="scss">
+@use '../../styles/tokens' as *;
 .rules-tabs { display: flex; gap: var(--space-1); padding: var(--space-1); margin-bottom: var(--space-6); border-radius: 12px; background: var(--paper); }
-.rules-tabs button { flex: 1; padding: var(--space-3) var(--space-4); border-radius: 9px; font-size: var(--text-label); font-weight: 600; color: var(--muted); }
+.rules-tabs button { flex: 1; padding: var(--space-3) var(--space-2); border-radius: 9px; font-size: var(--text-label); font-weight: 600; color: var(--muted); white-space: nowrap; }
 .rules-tabs button[aria-selected='true'] { background: var(--green); color: var(--card); }
 .rules-panel { border-radius: 4px; }
 p { color: var(--muted); line-height: 1.8; }
@@ -118,4 +131,7 @@ section p { font-size: var(--text-small); margin-top: var(--space-2); }
 .last { background: #caa864; }
 .forbidden-example { display: grid; place-items: center; width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; color: var(--danger); background: var(--danger-soft); font-weight: 700; }
 .primary { width: 100%; margin-top: var(--space-6); font-size: var(--text-label); }
+@media (max-width: $mobile) {
+  .rules-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 </style>

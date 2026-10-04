@@ -3,13 +3,13 @@ import { readFile, stat } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { randomInt, randomUUID } from 'node:crypto';
 import { Server, type Socket } from 'socket.io';
-import { commandSchema, type ClientEvents, type ServerEvents, type RoomSnapshot, type CommandResponse, type TimeoutState } from '../shared/protocol.js';
-import { applyMove, boardCellCount, initialState } from '../shared/game/engine.js';
+import { commandSchema, type ClientEvents, type ServerEvents, type RoomSnapshot, type CommandResponse, type TimeoutState, type RematchSetup } from '../shared/protocol.js';
+import { applyMove, validMoveCode, initialState } from '../shared/game/engine.js';
 import { endGame } from '../shared/game/state.js';
 import type { Color, GameSettings, GameState } from '../shared/game/types.js';
 import { otherCharacter, TIMEOUT_PENALTY_MS } from '../shared/game/types.js';
 interface Player { color: Color; token: string; socketId: string | null; disconnectedAt: number | null; ready: boolean; rematch: boolean }
-interface Room { timeout: TimeoutState | null; code: string; settings: GameSettings; players: Player[]; game: GameState | null; deadline: number | null; updatedAt: number; revision: number; requests: Map<string, CommandResponse> }
+interface Room { timeout: TimeoutState | null; rematchSetup: RematchSetup | null; code: string; settings: GameSettings; players: Player[]; game: GameState | null; deadline: number | null; updatedAt: number; revision: number; requests: Map<string, CommandResponse> }
 interface SocketData { code?: string; token?: string; windowStart?: number; count?: number }
 type GameSocket = Socket<ClientEvents, ServerEvents, Record<string, never>, SocketData>;
 export interface ServerOptions { reconnectMs?: number; idleMs?: number; tickMs?: number; staticRoot?: string; now?: () => number }
@@ -34,12 +34,13 @@ export function createGameServer(options: ServerOptions = {}): { http: HttpServe
   });
   const io = new Server<ClientEvents, ServerEvents, Record<string, never>, SocketData>(http, { maxHttpBufferSize: 8192 });
   function snapshot(room: Room): RoomSnapshot {
-    return { timeout: room.timeout, code: room.code, settings: room.settings, players: room.players.map(({ color, socketId, ready, rematch }) => ({ color, connected: socketId !== null, ready, rematch })), game: room.game, deadline: room.deadline, serverNow: nowMillis(), revision: room.revision };
+    return { timeout: room.timeout, rematchSetup: room.rematchSetup, code: room.code, settings: room.settings, players: room.players.map(({ color, socketId, ready, rematch }) => ({ color, connected: socketId !== null, ready, rematch })), game: room.game, deadline: room.deadline, serverNow: nowMillis(), revision: room.revision };
   }
   function publish(room: Room): void { room.revision++; io.to(room.code).emit('room:state', snapshot(room)); }
   function start(room: Room): void {
     room.timeout = null;
-    room.game = initialState(randomUUID(), room.settings.gameType);
+    room.rematchSetup = null;
+    room.game = initialState(randomUUID(), room.settings.gameType, room.settings);
     room.deadline = room.settings.seconds ? nowMillis() + room.settings.seconds * 1000 : null;
     for (const player of room.players) player.rematch = false;
     room.requests.clear();
@@ -107,7 +108,7 @@ export function createGameServer(options: ServerOptions = {}): { http: HttpServe
           const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
           do { code = Array.from({ length: 6 }, () => alphabet[randomInt(alphabet.length)]).join(''); } while (rooms.has(code) || expired.has(code));
           player = { color: 'black', token: randomUUID(), socketId: socket.id, disconnectedAt: null, ready: false, rematch: false };
-          room = { timeout: null, code, settings: command.settings, players: [player], game: null, deadline: null, updatedAt: now, revision: 0, requests: new Map() };
+          room = { timeout: null, rematchSetup: null, code, settings: command.settings, players: [player], game: null, deadline: null, updatedAt: now, revision: 0, requests: new Map() };
           rooms.set(code, room);
         } else {
           room = rooms.get(command.code);
@@ -141,10 +142,23 @@ export function createGameServer(options: ServerOptions = {}): { http: HttpServe
       if (previous) { ack({ ...previous, room: snapshot(room) }); return; }
       if (command.type === 'leave') { removeRoom(room, '플레이어가 방을 나갔습니다.'); ack({ ok: true }); return; }
       if (command.type === 'character') {
-        if (room.game || room.players.some(p => p.ready)) { reject('SETTINGS_LOCKED', '준비 완료 전까지만 캐릭터를 바꿀 수 있어요.'); return; }
+        if (room.game || room.rematchSetup || room.players.some(p => p.ready)) { reject('SETTINGS_LOCKED', '준비 완료 전까지만 캐릭터를 바꿀 수 있어요.'); return; }
         room.settings.blackCharacter = player.color === 'black' ? command.character : otherCharacter(command.character);
+      } else if (command.type === 'configure-rematch') {
+        if (player.color !== 'black') { reject('NOT_HOST', '방장만 재대국 설정을 바꿀 수 있어요.'); return; }
+        if (room.revision !== command.expectedRoomRevision) {
+          ack({ ok: false, errorCode: 'STALE_ROOM', error: '최신 방 상태를 반영했습니다. 설정을 확인하고 다시 시도해 주세요.', room: snapshot(room) }); return;
+        }
+        if (room.game || room.rematchSetup !== 'editing') { reject('SETTINGS_LOCKED', '재대국 설정 중에만 바꿀 수 있어요.'); return; }
+        if (command.settings.gameType !== room.settings.gameType || command.settings.blackCharacter !== room.settings.blackCharacter) {
+          reject('INVALID_SETTINGS', '같은 종목과 캐릭터로 다시 시작해 주세요.'); return;
+        }
+        room.settings = command.settings;
+        room.rematchSetup = 'ready';
+        for (const participant of room.players) participant.ready = participant.color === 'black';
       } else if (command.type === 'ready') {
         if (room.game) { reject('ALREADY_STARTED', '이미 시작한 대국입니다.'); return; }
+        if (room.rematchSetup === 'editing') { reject('SETTINGS_PENDING', '방장이 재대국 설정을 마치면 준비할 수 있어요.'); return; }
         player.ready = true;
         if (room.players.length === 2 && room.players.every(p => p.ready && p.socketId)) start(room);
       } else {
@@ -163,7 +177,7 @@ export function createGameServer(options: ServerOptions = {}): { http: HttpServe
           }
           room.deadline = null;
         } else if (command.type === 'move') {
-          if (command.index >= boardCellCount(room.settings.gameType)) { reject('INVALID_COMMAND', '게임판 밖에는 돌을 놓을 수 없습니다.'); return; }
+          if (!validMoveCode(room.settings.gameType, command.index)) { reject('INVALID_COMMAND', '게임판에 맞지 않는 수입니다.'); return; }
           if (room.timeout) { reject('TIMEOUT_PENDING', '시간 초과 선택과 꿀밤 연출이 끝난 후 착수해 주세요.'); return; }
           if (room.game.turn !== player.color || room.players.some(p => !p.socketId)) { reject('NOT_YOUR_TURN', '지금은 착수할 수 없습니다.'); return; }
           const next = applyMove(room.game, command.index);
@@ -176,7 +190,13 @@ export function createGameServer(options: ServerOptions = {}): { http: HttpServe
         } else if (command.type === 'rematch') {
           if (!room.game.result) { reject('GAME_PLAYING', '대국 종료 후 다시 할 수 있습니다.'); return; }
           player.rematch = true;
-          if (room.players.length === 2 && room.players.every(p => p.rematch && p.socketId)) start(room);
+          if (room.players.length === 2 && room.players.every(p => p.rematch && p.socketId)) {
+            room.game = null;
+            room.deadline = null;
+            room.timeout = null;
+            room.rematchSetup = 'editing';
+            for (const participant of room.players) { participant.ready = false; participant.rematch = false; }
+          }
         }
       }
       room.updatedAt = now; publish(room);

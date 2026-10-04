@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
-import type { Cell, Color, GameType } from '../shared/game/types';
+import { DEFAULT_SETTINGS, type Cell, type Color, type GameType } from '../shared/game/types';
 import { initialState } from '../shared/game/engine';
 import { GOMOKU_CELL_COUNT, GOMOKU_SIZE } from '../shared/games/gomoku/board';
 import SetupPanel from '../src/components/game/SetupPanel.vue';
@@ -9,6 +9,7 @@ import GameRules from '../src/components/game/GameRules.vue';
 import GomokuBoard from '../src/components/game/GomokuBoard.vue';
 import GomokuMatchSidebar from '../src/components/game/GomokuMatchSidebar.vue';
 import ResultPanel from '../src/components/game/ResultPanel.vue';
+import { SETUP_SETTINGS_KEY } from '../src/composables/useSetupSettings';
 
 let wrapper: VueWrapper | undefined;
 beforeEach(() => {
@@ -22,9 +23,10 @@ function emptyBoard(): Cell[] { return Array<Cell>(GOMOKU_CELL_COUNT).fill(null)
 
 describe('game selection and instructions', () => {
   it('announces the initial game, changes game without losing settings, and starts the chosen game', async () => {
+    localStorage.setItem(SETUP_SETTINGS_KEY, JSON.stringify({ settings: { ...DEFAULT_SETTINGS, aiDifficulty: 5 } }));
     wrapper = mount(SetupPanel, { props: { connected: true, busy: false, error: '' } });
     expect(wrapper.emitted('gameType')).toEqual([['reversi']]);
-    await wrapper.get('.settings-row select').setValue(5);
+    expect(wrapper.find('select').exists()).toBe(false);
     await wrapper.findAll('.character-option')[1].trigger('click');
     await wrapper.findAll('.game-option')[1].trigger('click');
     expect(wrapper.emitted('gameType')?.at(-1)).toEqual(['gomoku']);
@@ -36,7 +38,8 @@ describe('game selection and instructions', () => {
     expect(wrapper.emitted('start')?.[0]?.[0]).toMatchObject({ gameType: 'gomoku', mode: 'ai', aiDifficulty: 5, blackCharacter: 'jannabi' });
     await wrapper.findAll('.game-option')[0].trigger('click');
     expect(wrapper.get('.club-stamp').text()).toContain('REVERSI');
-    expect(wrapper.get('.settings-row select').element).toHaveProperty('value', '5');
+    await wrapper.get('.start-button').trigger('click');
+    expect(wrapper.emitted('start')?.at(-1)?.[0]).toMatchObject({ gameType: 'reversi', aiDifficulty: 5 });
   });
 
   it('includes Gomoku when creating a room', async () => {
@@ -52,7 +55,7 @@ describe('game selection and instructions', () => {
     const rules = mount(GameRules, { props: { gameType: 'reversi' }, attachTo: document.body });
     wrapper = rules;
     const tabs = rules.findAll('[role="tab"]');
-    expect(tabs.map(tab => tab.text())).toEqual(['리버시', '오목']);
+    expect(tabs.map(tab => tab.text())).toEqual(['리버시', '오목', '체스', '장기']);
     expect(rules.findAll('[role="tabpanel"]')).toHaveLength(1);
     const panelId = rules.get('[role="tabpanel"]').attributes('id');
     expect(panelId).toBeTruthy();
@@ -96,7 +99,7 @@ describe('game selection and instructions', () => {
     expect(rules.text()).not.toContain('금수');
 
     const keyboardSelections: [string, number][] = [
-      ['ArrowLeft', 1], ['ArrowRight', 0], ['End', 1], ['Home', 0],
+      ['ArrowLeft', 3], ['ArrowRight', 0], ['End', 3], ['Home', 0],
     ];
     for (const [key, index] of keyboardSelections) {
       await rules.get('[role="tab"][aria-selected="true"]').trigger('keydown', { key });

@@ -9,7 +9,7 @@ const status = computed<string>(() => props.result ? (props.result.winner === nu
 </script>
 
 <template>
-  <aside class="match-sidebar">
+  <div class="match-sidebar">
     <div class="match-card">
       <p class="eyebrow muted">FIVE IN A ROW</p>
       <h2>다섯 알을 나란히</h2>
@@ -25,12 +25,10 @@ const status = computed<string>(() => props.result ? (props.result.winner === nu
       <h3>내 돌도, 상대 돌도</h3>
       <p>상대의 돌이 네 개 이어졌다면 먼저 막아보세요. 양쪽이 열린 줄을 만들면 다음 수를 준비하기 좋아요.</p>
     </div>
-  </aside>
+  </div>
 </template>
 
 <style scoped lang="scss">
-@use '../../styles/tokens' as *;
-.match-sidebar { margin-top: 28px; }
 .match-card { padding: 22px 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
 .match-card .eyebrow { font-size: var(--text-micro); }
 .match-card h2 { font-size: var(--text-body); margin-top: 13px; letter-spacing: -.04em; }
@@ -48,5 +46,4 @@ const status = computed<string>(() => props.result ? (props.result.winner === nu
 .tip-card .eyebrow { font-size: var(--text-micro); color: var(--muted); margin-top: 10px; }.tip-icon { color: #889e6b; }
 .tip-card h3 { font-size: var(--text-label); margin: 16px 0 10px; }
 .tip-card > p:last-child { font-size: var(--text-small); line-height: 1.9; color: var(--muted); }
-@media (max-width: $compact) { .match-sidebar { display: none; } }
 </style>

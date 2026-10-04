@@ -13,7 +13,7 @@ const percentBlack = computed<number>(() => props.counts.black / (REVERSI_CELL_C
 </script>
 
 <template>
-  <aside class="match-sidebar">
+  <div class="match-sidebar">
     <div class="match-card">
       <p class="eyebrow muted">ON THE BOARD</p>
       <h2>지금, 보드 위에는</h2>
@@ -31,13 +31,10 @@ const percentBlack = computed<number>(() => props.counts.black / (REVERSI_CELL_C
       <h3>{{ counts.empty <= 10 ? '마지막 한 수까지' : '모서리를 눈여겨보세요' }}</h3>
       <p>{{ counts.empty <= 10 ? '이제 얼마 남지 않았어요. 마지막에 더 많은 돌을 가진 쪽이 승리해요.' : '한번 차지한 모서리의 돌은 뒤집히지 않아요. 든든한 내 편이 되어줄 거예요.' }}</p>
     </div>
-  </aside>
+  </div>
 </template>
 
 <style scoped lang="scss">
-@use '../../styles/tokens' as *;
-
-.match-sidebar { margin-top: 28px; }
 .match-card { padding: 22px 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
 .match-card .eyebrow { font-size: var(--text-micro); }
 .match-card h2 { font-size: var(--text-body); margin-top: 13px; letter-spacing: -.04em; }
@@ -58,7 +55,4 @@ const percentBlack = computed<number>(() => props.counts.black / (REVERSI_CELL_C
 .tip-card h3 { font-size: var(--text-label); margin: 16px 0 10px; }
 .tip-card > p:last-child { font-size: var(--text-small); line-height: 1.9; color: var(--muted); }
 
-@media (max-width: $compact) {
-  .match-sidebar { display: none; }
-}
 </style>

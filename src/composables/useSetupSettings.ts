@@ -27,12 +27,14 @@ function loadPreferences(): SetupPreferences {
       const times = isRecord(value.modeSeconds) ? value.modeSeconds : {};
       return {
         settings: {
-          gameType: validValue(settings.gameType, ['reversi', 'gomoku'] as const, 'reversi'),
+          gameType: validValue(settings.gameType, ['reversi', 'gomoku', 'chess', 'janggi'] as const, 'reversi'),
           mode: validValue(settings.mode, ['ai', 'local', 'online'] as const, DEFAULT_SETTINGS.mode),
           seconds: validValue(settings.seconds, allowedSeconds, DEFAULT_SETTINGS.seconds),
           undoLimit: validValue(settings.undoLimit, [-1, 0, 1, 3] as const, DEFAULT_SETTINGS.undoLimit),
           blackCharacter: validValue(settings.blackCharacter, ['jannabi', 'grasshopper'] as const, DEFAULT_SETTINGS.blackCharacter),
           aiDifficulty: validValue(settings.aiDifficulty, [1, 2, 3, 4, 5] as const, DEFAULT_AI_DIFFICULTY),
+          janggiBlackFormation: validValue(settings.janggiBlackFormation, ['outer', 'inner', 'left', 'right'] as const, 'outer'),
+          janggiWhiteFormation: validValue(settings.janggiWhiteFormation, ['outer', 'inner', 'left', 'right'] as const, 'outer'),
         },
         modeSeconds: {
           ai: validValue(times.ai, allowedSeconds, 30),

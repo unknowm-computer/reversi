@@ -12,7 +12,7 @@ export const useGameStore = defineStore('game', () => {
   const active = ref(false);
   const counts = computed(() => score(state.value.board));
   function findUndoIndex(color?: Color): number {
-    if (settings.value.mode === 'online' || (state.value.result && !['noLegalMoves', 'fiveInRow', 'boardFull'].includes(state.value.result.reason))) return -1;
+    if (settings.value.mode === 'online' || (state.value.result && ['resign', 'timeout', 'disconnect'].includes(state.value.result.reason))) return -1;
     if (settings.value.mode === 'ai' && color === 'white') return -1;
     const actor = settings.value.mode === 'ai' ? 'black' : color ?? history.value.at(-1)?.actor;
     if (!actor) return -1;
@@ -25,7 +25,7 @@ export const useGameStore = defineStore('game', () => {
   function canUndoFor(color: Color): boolean { return findUndoIndex(color) >= 0; }
   function start(next: GameSettings): void {
     settings.value = { ...next, gameType: next.gameType ?? 'reversi' };
-    state.value = initialState(createId(), settings.value.gameType);
+    state.value = initialState(createId(), settings.value.gameType, settings.value);
     history.value = []; undoUsed.value = { black: 0, white: 0 }; active.value = true;
   }
   function move(index: number, remaining: number): boolean {

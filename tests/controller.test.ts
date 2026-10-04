@@ -8,6 +8,9 @@ import { IMPACT_MS } from '../src/composables/useMoveImpact';
 import { TIMEOUT_PENALTY_MS } from '../src/composables/useTimeoutPenalty';
 import { DEFAULT_SETTINGS, TIMEOUT_PENALTY_HIT_MS, type GameState, type GameType } from '../shared/game/types';
 import { blockedGomokuPosition } from './fixtures/gomoku-blocked-position';
+import { applyMove, initialState } from '../shared/game/engine';
+import { encodePieceMove, JANGGI_PASS } from '../shared/game/pieces';
+import { squareIndex } from '../shared/games/chess/rules';
 class FakeWorker {
   static instances: FakeWorker[] = [];
   onmessage: ((event: MessageEvent<{ gameType: GameType; gameId: string; revision: number; index: number }>) => void) | null = null;
@@ -28,6 +31,82 @@ beforeEach(() => {
   wrapper = mount(defineComponent({ setup() { controller = useGameController(); return () => null; } }), { global: { plugins: [createPinia()] } });
 });
 afterEach(() => { wrapper?.unmount(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+function pieceEventPosition(gameType: 'chess' | 'janggi', check: boolean): { before: GameState; move: number } {
+  const chess = (from: Parameters<typeof squareIndex>[0], to: Parameters<typeof squareIndex>[0]): number => encodePieceMove(squareIndex(from), squareIndex(to));
+  const setup = gameType === 'chess' ? [chess('e2', 'e4'), chess('d7', 'd5')]
+    : check ? [encodePieceMove(81, 72), JANGGI_PASS, encodePieceMove(72, 75), JANGGI_PASS]
+      : [encodePieceMove(54, 45), encodePieceMove(27, 36)];
+  let before = initialState(controller.store.state.gameId, gameType, controller.store.settings);
+  for (const move of setup) before = applyMove(before, move)!;
+  return { before, move: gameType === 'chess' ? (check ? chess('f1', 'b5') : chess('e4', 'd5'))
+    : check ? encodePieceMove(75, 21) : encodePieceMove(45, 36) };
+}
+describe('Piece game reactions and turn timing', () => {
+  it.each(['chess', 'janggi'] as const)('uses each character’s capture sound in %s without delaying the next player', gameType => {
+    for (const blackCharacter of ['jannabi', 'grasshopper'] as const) {
+      controller.start({ ...DEFAULT_SETTINGS, gameType, blackCharacter, mode: 'local', seconds: 30 });
+      const { before, move } = pieceEventPosition(gameType, false);
+      controller.store.state = before;
+      const sound = vi.spyOn(controller.audio, 'sfx');
+      controller.move(move);
+      expect(controller.store.state.revision).toBe(before.revision + 1);
+      expect(controller.store.state.check).toBeNull();
+      expect(sound.mock.calls).toEqual([[blackCharacter === 'jannabi' ? 'laugh' : 'whistle', 0]]);
+      expect(controller.mood('black')).toBe(blackCharacter === 'jannabi' ? 'sly' : 'whistle');
+      expect(controller.impact.scene.value).toBeNull();
+      vi.advanceTimersByTime(200);
+      expect(controller.canMove.value).toBe(true);
+      expect(controller.timer.remaining.value).toBe(30000);
+      controller.undo();
+      expect(controller.mood('black')).toBe('undo');
+      sound.mockRestore();
+    }
+  });
+
+  it.each(['chess', 'janggi'] as const)('holds the %s AI and fresh turn clock only until the check taunt finishes', gameType => {
+    controller.start({ ...DEFAULT_SETTINGS, gameType, mode: 'ai', seconds: 30 });
+    const { before, move } = pieceEventPosition(gameType, true);
+    controller.store.state = before;
+    const sound = vi.spyOn(controller.audio, 'sfx');
+    vi.advanceTimersByTime(1000);
+    controller.move(move);
+    expect(controller.impact.scene.value?.kind).toBe(gameType === 'chess' ? 'check' : 'janggun');
+    expect(sound.mock.calls).toEqual([['taunt']]);
+    expect(controller.status.value).toContain(gameType === 'chess' ? '체크' : '장군');
+    expect(controller.canMove.value).toBe(false);
+    vi.advanceTimersByTime(IMPACT_MS - 1);
+    expect(FakeWorker.instances).toHaveLength(0);
+    expect(controller.timer.remaining.value).toBe(29000);
+    vi.advanceTimersByTime(1);
+    expect(controller.impact.scene.value).toBeNull();
+    expect(controller.impact.busy.value).toBe(false);
+    expect(FakeWorker.instances).toHaveLength(1);
+    expect(controller.timer.remaining.value).toBe(30000);
+    controller.undo();
+    expect(controller.impact.scene.value).toBeNull();
+    expect(FakeWorker.instances[0].terminated).toBe(true);
+    sound.mockRestore();
+  });
+
+  it('keeps online check replies available while displaying the taunt and never replays snapshots', () => {
+    controller.start({ ...DEFAULT_SETTINGS, gameType: 'chess', mode: 'online', seconds: 30 });
+    controller.online.connected.value = true;
+    controller.online.color.value = 'white';
+    const { before, move } = pieceEventPosition('chess', true);
+    controller.store.state = before;
+    const sound = vi.spyOn(controller.audio, 'sfx');
+    const checked = applyMove(before, move)!;
+    controller.store.online(checked, controller.store.settings);
+    expect(controller.impact.scene.value?.kind).toBe('check');
+    expect(controller.canMove.value).toBe(true);
+    expect(sound.mock.calls).toEqual([['taunt']]);
+    controller.store.online({ ...checked, pieces: checked.pieces?.slice() }, controller.store.settings);
+    expect(sound.mock.calls).toEqual([['taunt']]);
+    vi.advanceTimersByTime(1000);
+    expect(controller.timer.remaining.value).toBe(29000);
+    sound.mockRestore();
+  });
+});
 describe('Gomoku controller integration', () => {
   it.each(['ai', 'local'] as const)('ends a blocked %s game before starting another turn or timer', mode => {
     controller.start({ ...DEFAULT_SETTINGS, gameType: 'gomoku', mode, seconds: 30 });
@@ -65,6 +144,8 @@ describe('Gomoku controller integration', () => {
     expect(controller.store.state.gameType).toBe('gomoku');
     expect(controller.store.settings.aiDifficulty).toBe(4);
     expect(controller.store.state.result).toBeNull();
+    expect(controller.screen.value).toBe('preparing');
+    expect(controller.canMove.value).toBe(false);
   });
 
   it('preserves Gomoku state while the timeout decision and forgiveness run', () => {
@@ -111,6 +192,121 @@ describe('Solo hint integration', () => {
     expect(controller.store.state.board).toEqual(JSON.parse(initial).board);
   });
 });
+describe('Pre-game configuration lifecycle', () => {
+  it.each([
+    ['reversi', 64], ['gomoku', 225], ['chess', 64], ['janggi', 90],
+  ] as const)('previews %s without allowing input, hints or timeouts before confirmation', (gameType, cells) => {
+    controller.prepare({ ...DEFAULT_SETTINGS, gameType, mode: 'ai', blackCharacter: 'jannabi', seconds: 30, aiDifficulty: 5, janggiBlackFormation: 'left', janggiWhiteFormation: 'right' });
+    expect(controller.screen.value).toBe('preparing');
+    expect(controller.store.active).toBe(false);
+    expect(controller.store.state.gameType).toBe(gameType);
+    expect(controller.store.state.board).toHaveLength(cells);
+    expect(controller.store.settings).toMatchObject({ gameType, blackCharacter: 'jannabi', aiDifficulty: 5, janggiBlackFormation: 'left', janggiWhiteFormation: 'right' });
+    const initial = JSON.stringify(controller.store.state);
+    const remaining = controller.timer.remaining.value;
+    expect(controller.canMove.value).toBe(false);
+    expect(controller.canHint.value).toBe(false);
+    controller.move(controller.available.value[0]);
+    controller.hint.request();
+    vi.advanceTimersByTime(60000);
+    hidden(true);
+    vi.advanceTimersByTime(60000);
+    hidden(false);
+    vi.advanceTimersByTime(60000);
+    expect(controller.timer.remaining.value).toBe(remaining);
+    expect(controller.timeoutLoser.value).toBeNull();
+    expect(controller.store.history).toHaveLength(0);
+    expect(JSON.stringify(controller.store.state)).toBe(initial);
+    expect(FakeWorker.instances).toHaveLength(0);
+  });
+
+  it('starts the selected timer only when the final settings are confirmed', () => {
+    controller.prepare({ ...DEFAULT_SETTINGS, mode: 'local', seconds: 30 });
+    vi.advanceTimersByTime(120000);
+    controller.start({ ...controller.store.settings, seconds: 60, undoLimit: 3 });
+    expect(controller.screen.value).toBe('game');
+    expect(controller.store.active).toBe(true);
+    expect(controller.store.settings).toMatchObject({ mode: 'local', seconds: 60, undoLimit: 3 });
+    expect(controller.canMove.value).toBe(true);
+    expect(controller.timer.remaining.value).toBe(60000);
+    vi.advanceTimersByTime(59900);
+    expect(controller.timeoutLoser.value).toBeNull();
+    expect(controller.timer.remaining.value).toBe(100);
+    vi.advanceTimersByTime(100);
+    expect(controller.timeoutLoser.value).toBe('black');
+  });
+
+  it('returns to setup when preparation is cancelled without starting the clock', async () => {
+    controller.prepare({ ...DEFAULT_SETTINGS, gameType: 'janggi', mode: 'local', seconds: 60 });
+    await controller.home();
+    expect(controller.screen.value).toBe('setup');
+    expect(controller.store.active).toBe(false);
+    hidden(true); hidden(false);
+    vi.advanceTimersByTime(120000);
+    expect(controller.timeoutLoser.value).toBeNull();
+    expect(controller.store.state.result).toBeNull();
+    expect(FakeWorker.instances).toHaveLength(0);
+  });
+
+  it('cancels an outstanding AI request and rejects its stale reply when preparing another game', () => {
+    controller.start(DEFAULT_SETTINGS);
+    controller.move(19);
+    vi.advanceTimersByTime(500);
+    const worker = FakeWorker.instances[0];
+    expect(controller.thinking.value).toBe(true);
+    controller.prepare({ ...DEFAULT_SETTINGS, gameType: 'chess', seconds: 60 });
+    const preview = JSON.stringify(controller.store.state);
+    expect(worker.terminated).toBe(true);
+    expect(controller.thinking.value).toBe(false);
+    worker.reply(18);
+    hidden(true); hidden(false);
+    vi.advanceTimersByTime(120000);
+    expect(JSON.stringify(controller.store.state)).toBe(preview);
+    expect(controller.timeoutLoser.value).toBeNull();
+    expect(FakeWorker.instances).toHaveLength(1);
+  });
+
+  it('clears a pending move animation before it can start the next turn', () => {
+    controller.start(DEFAULT_SETTINGS);
+    controller.move(19);
+    expect(controller.animating.value).toBe(true);
+    controller.prepare({ ...DEFAULT_SETTINGS, gameType: 'gomoku' });
+    expect(controller.animating.value).toBe(false);
+    hidden(true); hidden(false);
+    vi.advanceTimersByTime(60000);
+    expect(FakeWorker.instances).toHaveLength(0);
+    expect(controller.timeoutLoser.value).toBeNull();
+    expect(controller.store.state.revision).toBe(0);
+  });
+
+  it('cancels a pending hint and ignores its reply after returning to pre-game settings', () => {
+    controller.start(DEFAULT_SETTINGS);
+    controller.hint.request();
+    const worker = FakeWorker.instances[0];
+    controller.prepare({ ...DEFAULT_SETTINGS, gameType: 'gomoku' });
+    expect(worker.terminated).toBe(true);
+    expect(controller.hint.busy.value).toBe(false);
+    worker.reply(19);
+    expect(controller.hint.index.value).toBeNull();
+    expect(controller.hint.error.value).toBeNull();
+  });
+
+  it.each(['decision', 'penalty'] as const)('clears an old timeout %s without resuming it during preparation', phase => {
+    controller.start({ ...DEFAULT_SETTINGS, mode: 'local', seconds: 30 });
+    vi.advanceTimersByTime(30000);
+    if (phase === 'penalty') controller.chooseTimeout('forgive');
+    controller.prepare({ ...DEFAULT_SETTINGS, gameType: 'janggi', mode: 'local', seconds: 30 });
+    const preview = JSON.stringify(controller.store.state);
+    expect(controller.timeoutLoser.value).toBeNull();
+    expect(controller.penalty.recipient.value).toBeNull();
+    hidden(true); hidden(false);
+    vi.advanceTimersByTime(TIMEOUT_PENALTY_MS + 60000);
+    expect(controller.timeoutLoser.value).toBeNull();
+    expect(controller.penalty.recipient.value).toBeNull();
+    expect(JSON.stringify(controller.store.state)).toBe(preview);
+    expect(FakeWorker.instances).toHaveLength(0);
+  });
+});
 describe('Controller lifecycle', () => {
   it.each([1, 2, 3, 4, 5] as const)('keeps a chosen solo character and sends difficulty %s to the AI', difficulty => {
     controller.start({ ...DEFAULT_SETTINGS, blackCharacter: 'jannabi', aiDifficulty: difficulty });
@@ -127,8 +323,15 @@ describe('Controller lifecycle', () => {
     expect(controller.store.state.result).toBeNull();
     expect(controller.store.state.revision).toBe(0);
     expect(controller.store.history).toHaveLength(0);
-    expect(controller.timer.remaining.value).toBe(30000);
+    expect(controller.screen.value).toBe('preparing');
+    expect(controller.canHint.value).toBe(false);
+    const remaining = controller.timer.remaining.value;
+    vi.advanceTimersByTime(60000);
+    expect(controller.timer.remaining.value).toBe(remaining);
+    expect(controller.timeoutLoser.value).toBeNull();
+    controller.start({ ...controller.store.settings, seconds: 60 });
     expect(controller.canHint.value).toBe(true);
+    expect(controller.timer.remaining.value).toBe(60000);
     FakeWorker.instances[0].reply(18);
     expect(controller.store.state.revision).toBe(0);
   });

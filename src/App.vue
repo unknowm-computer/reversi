@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useGameController } from './composables/useGameController';
-import { DEFAULT_AI_DIFFICULTY, gameName, otherCharacter, type Character, type Color, type GameType } from '../shared/game/types';
+import { DEFAULT_AI_DIFFICULTY, gameName, isPieceGame, otherCharacter, type Character, type Color, type GameSettings, type GameType } from '../shared/game/types';
+import { JANGGI_PASS } from '../shared/game/pieces';
 import SetupPanel from './components/game/SetupPanel.vue';
+import GameSetupForm from './components/game/GameSetupForm.vue';
 import VictoryScene from './components/game/VictoryScene.vue';
 import MoveImpact from './components/game/MoveImpact.vue';
 import TimeoutChoiceScene from './components/game/TimeoutChoiceScene.vue';
 import TimeoutPenalty from './components/game/TimeoutPenalty.vue';
 import GameBoard from './components/game/GameBoard.vue';
 import GomokuBoard from './components/game/GomokuBoard.vue';
+import PieceBoard from './components/game/PieceBoard.vue';
+import PieceMatchSidebar from './components/game/PieceMatchSidebar.vue';
 import GameRules from './components/game/GameRules.vue';
 import PlayerPanel from './components/game/PlayerPanel.vue';
 import ResultPanel from './components/game/ResultPanel.vue';
@@ -16,7 +20,7 @@ import OnlineLobby from './components/game/OnlineLobby.vue';
 import AppIcon from './components/common/AppIcon.vue';
 import ModalDialog from './components/common/ModalDialog.vue';
 import AppHeader from './components/common/AppHeader.vue';
-import GameStoryPanel from './components/game/GameStoryPanel.vue';
+import MatchDetails from './components/game/MatchDetails.vue';
 import ReversiMatchSidebar from './components/game/ReversiMatchSidebar.vue';
 import GomokuMatchSidebar from './components/game/GomokuMatchSidebar.vue';
 import TimeoutDecisionContent from './components/game/TimeoutDecisionContent.vue';
@@ -36,10 +40,15 @@ const bottom = computed<Color>(() => myColor.value);
 const top = computed<Color>(() => bottom.value === 'black' ? 'white' : 'black');
 const isLocal = computed<boolean>(() => store.settings.mode === 'local');
 const isAskingMercy = computed<boolean>(() => store.settings.mode === 'ai' && game.timeoutLoser.value === myColor.value);
-const canResign = computed<boolean>(() => !store.state.result && !game.timeoutPending.value);
+const canResign = computed<boolean>(() => screen.value === 'game' && !store.state.result && !game.timeoutPending.value);
 const modeName = computed(() => ({ ai: '혼자 놀기', local: '함께 놀기', online: '온라인 대전' })[store.settings.mode]);
 const rematchRequested = computed<boolean>(() => store.settings.mode === 'online' && Boolean(online.room.value?.players.find(player => player.color === myColor.value)?.rematch));
 const rematchDisabled = computed<boolean>(() => store.settings.mode === 'online' && (rematchRequested.value || game.decisionBlocked.value));
+const onlineRematchSetup = computed(() => {
+  const room = online.room.value;
+  if (!room?.rematchSetup) return undefined;
+  return { phase: room.rematchSetup, host: online.color.value === 'black', ready: Boolean(room.players.find(player => player.color === online.color.value)?.ready) };
+});
 const victoryPlayed = ref(false);
 const victoryPending = computed(() => screen.value === 'game' && Boolean(store.state.result?.winner) && !victoryPlayed.value);
 watch(() => `${store.state.gameId}:${Boolean(store.state.result)}`, () => { victoryPlayed.value = false; }, { flush: 'sync' });
@@ -52,13 +61,25 @@ function undoCount(color: Color): number | '∞' {
   return Math.max(0, store.settings.undoLimit - store.undoUsed[color]);
 }
 function showActions(color: Color): boolean {
-  return !store.state.result && store.state.turn === color && (isLocal.value || color === myColor.value);
+  return screen.value === 'game' && !store.state.result && store.state.turn === color && (isLocal.value || color === myColor.value);
+}
+function confirmSetup(settings: GameSettings): void {
+  if (screen.value !== 'preparing' || online.busy.value) return;
+  if (onlineRematchSetup.value) {
+    if (onlineRematchSetup.value.phase === 'editing') online.configureRematch(settings);
+    else online.ready();
+  } else if (settings.mode === 'online') void online.enter('create', settings);
+  else game.start(settings);
 }
 function requestHome(): void { if ((screen.value === 'game' && !store.state.result) || screen.value === 'lobby') modal.value = 'home'; else void game.home(); }
 function canUndoFor(color: Color): boolean {
   return showActions(color) && store.canUndoFor(color) && !game.timeoutPending.value && !(isLocal.value && game.penalty.recipient.value);
 }
 function undoFor(color: Color): void { if (canUndoFor(color)) game.undo(color); }
+function canPassFor(color: Color): boolean {
+  return activeGameType.value === 'janggi' && showActions(color) && canMove.value && !modal.value && !resultVisible.value && available.value.includes(JANGGI_PASS);
+}
+function passFor(color: Color): void { if (canPassFor(color)) game.move(JANGGI_PASS); }
 function requestResign(color: Color): void {
   if (!canResign.value || !showActions(color)) return;
   resigningColor.value = color;
@@ -71,8 +92,9 @@ function confirm(): void {
 }
 </script>
 <template>
-  <div class="app-shell" @pointerdown.once="audio.unlock()" @keydown.once="audio.unlock()">
+  <div class="app-shell" :class="{ 'is-playing': screen === 'game' || screen === 'preparing' }" @pointerdown.once="audio.unlock()" @keydown.once="audio.unlock()">
     <AppHeader
+      :compact="screen === 'game' || screen === 'preparing'"
       :show-home="screen !== 'setup'"
       :show-rematch="screen === 'game' && Boolean(store.state.result)"
       :rematch-requested="rematchRequested"
@@ -90,9 +112,9 @@ function confirm(): void {
         :busy="online.busy.value"
         :error="online.error.value"
         @game-type="selectedGameType = $event"
-        @start="game.start"
+        @start="game.prepare"
         @online="online.connect"
-        @create="config => online.enter('create', config)"
+        @create="game.prepare"
         @join="(config, code) => online.enter('join', config, code)"
       />
       <OnlineLobby
@@ -106,29 +128,30 @@ function confirm(): void {
         @character="online.chooseCharacter"
         @leave="requestHome"
       />
-      <section v-else-if="screen === 'game'" class="game-layout">
-        <GameStoryPanel
-          :mode-name="`${gameName(activeGameType)} · ${modeName}`"
-          :room-code="store.settings.mode === 'online' ? online.room.value?.code ?? null : null"
-          :seconds="store.settings.seconds"
-          @rules="modal = 'rules'"
-        />
+      <section v-else-if="screen === 'game' || screen === 'preparing'" class="game-layout" :class="{ 'is-janggi': activeGameType === 'janggi' }">
         <div class="play-area">
-          <div class="game-topline">
-            <span class="eyebrow">{{ gameName(activeGameType) }} · {{ modeName }}<template v-if="store.settings.mode === 'ai'"> · {{ store.settings.aiDifficulty ?? DEFAULT_AI_DIFFICULTY }}단계</template></span>
-            <span>{{ store.state.revision === 0 ? '새로운 한 판' : activeGameType === 'gomoku' ? `${moveCount}수 진행` : `${moveCount} / ${store.state.board.length}` }}</span>
-          </div>
+          <h1 class="sr-only">{{ gameName(activeGameType) }} · {{ modeName }}</h1>
           <PlayerPanel
             :game-type="activeGameType"
-            :character="character(top)" :color="top" :count="store.counts[top]" :active="!store.state.result && store.state.turn === top"
+            :character="character(top)" :color="top" :count="store.counts[top]" :active="screen === 'game' && !store.state.result && store.state.turn === top"
             :mood="game.mood(top)" :remaining="timer.remaining.value" :seconds="store.settings.seconds" :undo-count="undoCount(top)"
             :show-actions="showActions(top)" :can-undo="canUndoFor(top)" :can-resign="canResign" @undo="undoFor(top)" @resign="requestResign(top)"
+            :can-pass="canPassFor(top)" :pass-suggested="game.hint.index.value === JANGGI_PASS" :bikjang="Boolean(store.state.janggi?.bikjang)" @pass="passFor(top)"
           />
           <p class="sr-only" role="status" aria-live="polite">{{ status }}</p>
           <p v-if="game.connectionNotice.value" class="connection-notice" role="alert">{{ game.connectionNotice.value }}</p>
           <div class="board-stage">
+            <PieceBoard
+              v-if="isPieceGame(activeGameType)"
+              :state="store.state"
+              :legal="available"
+              :interactive="canMove && !modal && !resultVisible"
+              :hint-index="game.hint.index.value"
+              :perspective="myColor"
+              @move="game.move"
+            />
             <GomokuBoard
-              v-if="activeGameType === 'gomoku'"
+              v-else-if="activeGameType === 'gomoku'"
               :board="store.state.board"
               :turn="store.state.turn"
               :interactive="canMove && !modal && !resultVisible"
@@ -154,6 +177,7 @@ function confirm(): void {
               :actor="character(game.impact.scene.value.actor)"
               :kind="game.impact.scene.value.kind"
               :count="game.impact.scene.value.count"
+              :compact="store.settings.mode === 'online' && game.impact.scene.value.kind !== 'capture'"
             />
             <TimeoutPenalty
               v-if="game.penalty.recipient.value"
@@ -164,9 +188,10 @@ function confirm(): void {
           </div>
           <PlayerPanel
             :game-type="activeGameType"
-            :character="character(bottom)" :color="bottom" :count="store.counts[bottom]" :active="!store.state.result && store.state.turn === bottom"
+            :character="character(bottom)" :color="bottom" :count="store.counts[bottom]" :active="screen === 'game' && !store.state.result && store.state.turn === bottom"
             :mood="game.mood(bottom)" :remaining="timer.remaining.value" :seconds="store.settings.seconds" :undo-count="undoCount(bottom)"
             :show-actions="showActions(bottom)" :can-undo="canUndoFor(bottom)" :can-resign="canResign" @undo="undoFor(bottom)" @resign="requestResign(bottom)"
+            :can-pass="canPassFor(bottom)" :pass-suggested="game.hint.index.value === JANGGI_PASS" :bikjang="Boolean(store.state.janggi?.bikjang)" @pass="passFor(bottom)"
             :show-hint="store.settings.mode === 'ai'" :can-hint="game.canHint.value" :hint-busy="game.hint.busy.value" @hint="game.hint.request"
           />
           <p v-if="game.hint.error.value" class="game-error" role="alert">{{ game.hint.error.value }}</p>
@@ -175,8 +200,16 @@ function confirm(): void {
           </div>
           <p v-if="store.settings.mode === 'online' && online.error.value" class="game-error" role="alert">{{ online.error.value }}</p>
         </div>
-        <GomokuMatchSidebar v-if="activeGameType === 'gomoku'" :move-count="moveCount" :turn="store.state.turn" :result="store.state.result" />
-        <ReversiMatchSidebar v-else :counts="store.counts" />
+        <MatchDetails
+          :mode-name="`${gameName(activeGameType)} · ${modeName}`"
+          :ai-difficulty="store.settings.mode === 'ai' ? store.settings.aiDifficulty ?? DEFAULT_AI_DIFFICULTY : null"
+          :room-code="store.settings.mode === 'online' ? online.room.value?.code ?? null : null"
+          :seconds="store.settings.seconds"
+        >
+          <PieceMatchSidebar v-if="isPieceGame(activeGameType)" :state="store.state" />
+          <GomokuMatchSidebar v-else-if="activeGameType === 'gomoku'" :move-count="moveCount" :turn="store.state.turn" :result="store.state.result" />
+          <ReversiMatchSidebar v-else :counts="store.counts" />
+        </MatchDetails>
       </section>
     </main>
     <footer class="site-footer">
@@ -189,8 +222,19 @@ function confirm(): void {
       @done="victoryPlayed = true"
       @hit="audio.sfx('bonk')"
     />
+    <ModalDialog v-if="screen === 'preparing'" class="game-setup-dialog" :title="onlineRematchSetup ? '한 판 더! 이번 설정은?' : '우리, 한 판 놀까?'" :dismissible="!online.busy.value" @close="game.home">
+      <GameSetupForm
+        :settings="store.settings"
+        :busy="online.busy.value"
+        :connected="online.connected.value"
+        :error="store.settings.mode === 'online' ? online.error.value : ''"
+        :online-rematch="onlineRematchSetup"
+        @confirm="confirmSetup"
+        @cancel="game.home"
+      />
+    </ModalDialog>
     <ModalDialog
-      v-if="game.timeoutLoser.value && game.canDecideTimeout.value"
+      v-else-if="game.timeoutLoser.value && game.canDecideTimeout.value"
       :dismissible="false"
       :title="isAskingMercy ? '시간 초과… 한 번만 봐주세요!' : '시간 초과! 한 번 봐줄까요?'"
     >
@@ -247,15 +291,23 @@ function confirm(): void {
 @use './styles/tokens' as *;
 
 .app-shell { max-width: 1240px; margin: auto; padding: 0 44px; }
+.app-shell.is-playing { padding-inline: var(--space-8); }
 .site-footer { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding: 25px 0 30px; color: var(--muted); font-size: var(--text-caption); }
 .footer-mark { display: flex; gap: 8px; align-items: center; font-family: ui-monospace, monospace; font-size: var(--text-micro); letter-spacing: .12em; }
 .footer-mark svg { width: 13px; }
-.game-layout { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(320px, 500px) minmax(170px, 1fr); gap: 38px; padding: 32px 0 42px; align-items: start; }
-.board-stage { position: relative; isolation: isolate; margin-block: var(--space-4) var(--space-6); }
+.game-layout {
+  --board-size: clamp(580px, calc(100dvh - 300px), 720px);
+  display: grid;
+  grid-template-columns: minmax(0, var(--board-size)) 240px;
+  justify-content: center;
+  gap: var(--space-8);
+  padding-block: var(--space-6) var(--space-8);
+  align-items: start;
+}
+.game-layout.is-janggi { --board-size: clamp(440px, calc((100dvh - 400px) * .9), 720px); }
+.board-stage { position: relative; isolation: isolate; margin-block: var(--space-2) var(--space-3); }
 .connection-notice { margin-top: var(--space-3); font-size: var(--text-small); color: var(--danger); }
 .play-area { min-width: 0; }
-.game-topline { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; font-size: var(--text-caption); color: var(--muted); }
-.game-topline .eyebrow { font-family: inherit; font-size: var(--text-small); letter-spacing: .08em; color: var(--ink); }
 .game-controls { display: flex; justify-content: space-between; align-items: center; margin-top: 15px; }
 .game-controls svg { width: 15px; }
 .game-controls .text-button { font-size: var(--text-small); }
@@ -266,13 +318,15 @@ function confirm(): void {
 
 @media (max-width: $compact) {
   .app-shell { padding: 0 28px; }
-  .game-layout { grid-template-columns: minmax(130px, 1fr) minmax(320px, 500px); gap: 28px; }
+  .game-layout { grid-template-columns: minmax(0, var(--board-size)); gap: var(--space-6); }
 }
 @media (max-width: $mobile) {
+  .game-setup-dialog :deep(.modal-inner) { padding: var(--space-6) var(--space-4) var(--space-4); }
+  .game-setup-dialog :deep(.modal-inner > h2) { margin-bottom: var(--space-3); }
   .app-shell { padding: 0 18px; }
+  .app-shell.is-playing { padding-inline: var(--space-3); }
   .site-footer { margin-top: 24px; font-size: var(--text-caption); }
   .footer-mark { font-size: var(--text-micro); letter-spacing: .04em; }
-  .game-layout { grid-template-columns: minmax(0, 1fr); padding: 22px 0 15px; max-width: 500px; margin: auto; }
-  .game-topline { margin-bottom: 12px; }
+  .game-layout { grid-template-columns: minmax(0, 1fr); max-width: 720px; margin-inline: auto; padding-block: var(--space-4); gap: var(--space-6); }
 }
 </style>

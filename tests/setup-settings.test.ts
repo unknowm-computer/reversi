@@ -1,14 +1,26 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
+import { defineComponent, h } from 'vue';
 import SetupPanel from '../src/components/game/SetupPanel.vue';
-import { SETUP_SETTINGS_KEY } from '../src/composables/useSetupSettings';
-import { DEFAULT_SETTINGS } from '../shared/game/types';
+import GameSetupForm from '../src/components/game/GameSetupForm.vue';
+import { SETUP_SETTINGS_KEY, useSetupSettings } from '../src/composables/useSetupSettings';
+import { DEFAULT_SETTINGS, type GameSettings } from '../shared/game/types';
 
 let wrapper: VueWrapper | undefined;
 function openSetup(): VueWrapper {
   wrapper = mount(SetupPanel, { props: { connected: true, busy: false, error: '' } });
   return wrapper;
+}
+function openPreferences(): GameSettings {
+  let config!: GameSettings;
+  wrapper = mount(defineComponent({
+    setup() {
+      config = useSetupSettings().config;
+      return () => h('div');
+    },
+  }));
+  return config;
 }
 beforeEach(() => {
   localStorage.clear();
@@ -29,43 +41,49 @@ describe('remembered setup settings', () => {
     expect(setup.emitted('start')?.[0]?.[0]).toEqual(DEFAULT_SETTINGS);
   });
 
-  it('saves changes before starting and restores the game, character, difficulty and time on the next visit', async () => {
+  it('remembers basic choices and settings confirmed on the game screen for the next visit', async () => {
     const setup = openSetup();
     await setup.findAll('.game-option')[1].trigger('click');
     await setup.findAll('.character-option')[1].trigger('click');
-    await setup.findAll('select')[0].setValue('5');
-    await setup.findAll('select')[1].setValue('60');
-    expect(localStorage.getItem(SETUP_SETTINGS_KEY)).not.toBeNull();
+    expect(setup.find('select').exists()).toBe(false);
+    await setup.get('.start-button').trigger('click');
+    const selected = setup.emitted('start')![0][0] as GameSettings;
     setup.unmount();
+    const details = mount(GameSetupForm, { props: { settings: selected, busy: false, connected: true, error: '' } });
+    wrapper = details;
+    await details.findAll('select')[0].setValue('5');
+    await details.findAll('select')[1].setValue('60');
+    await details.get('form').trigger('submit');
+    expect(details.emitted('confirm')?.[0]?.[0]).toMatchObject({ gameType: 'gomoku', blackCharacter: 'jannabi', aiDifficulty: 5, seconds: 60 });
+    expect(localStorage.getItem(SETUP_SETTINGS_KEY)).not.toBeNull();
+    details.unmount();
 
     const restored = openSetup();
     expect(restored.emitted('gameType')).toEqual([['gomoku']]);
     expect(restored.findAll('.character-option')[1].attributes('aria-pressed')).toBe('true');
-    expect(restored.findAll('select').map(select => (select.element as HTMLSelectElement).value)).toEqual(['5', '60']);
+    expect(restored.find('select').exists()).toBe(false);
     await restored.get('.start-button').trigger('click');
     expect(restored.emitted('start')?.[0]?.[0]).toMatchObject({ gameType: 'gomoku', blackCharacter: 'jannabi', aiDifficulty: 5, seconds: 60 });
   });
 
-  it('restores the local mode and undo limit and preserves independent times across mode changes and remounting', async () => {
-    const setup = openSetup();
-    await setup.findAll('select')[1].setValue('60');
-    await setup.findAll('.mode-tabs button')[1].trigger('click');
-    expect((setup.findAll('select')[0].element as HTMLSelectElement).value).toBe('30');
-    await setup.findAll('select')[0].setValue('0');
-    await setup.findAll('select')[1].setValue('-1');
-    await setup.findAll('.mode-tabs button')[2].trigger('click');
-    await setup.get('select').setValue('60');
-    await setup.findAll('.mode-tabs button')[1].trigger('click');
-    setup.unmount();
+  it('restores the local undo limit and independent mode times across remounting', () => {
+    const config = openPreferences();
+    config.seconds = 60;
+    config.mode = 'local';
+    expect(config.seconds).toBe(30);
+    config.seconds = 0;
+    config.undoLimit = -1;
+    config.mode = 'online';
+    config.seconds = 60;
+    config.mode = 'local';
+    wrapper!.unmount();
 
-    const restored = openSetup();
-    expect(restored.findAll('.mode-tabs button')[1].attributes('aria-pressed')).toBe('true');
-    await restored.get('.start-button').trigger('click');
-    expect(restored.emitted('start')?.[0]?.[0]).toMatchObject({ mode: 'local', seconds: 0, undoLimit: -1 });
-    await restored.findAll('.mode-tabs button')[0].trigger('click');
-    expect((restored.findAll('select')[1].element as HTMLSelectElement).value).toBe('60');
-    await restored.findAll('.mode-tabs button')[2].trigger('click');
-    expect((restored.get('select').element as HTMLSelectElement).value).toBe('60');
+    const restored = openPreferences();
+    expect(restored).toMatchObject({ mode: 'local', seconds: 0, undoLimit: -1 });
+    restored.mode = 'ai';
+    expect(restored.seconds).toBe(60);
+    restored.mode = 'online';
+    expect(restored.seconds).toBe(60);
   });
 
   it('connects automatically when the remembered mode is online', async () => {
@@ -90,7 +108,8 @@ describe('remembered setup settings', () => {
     await setup.get('.start-button').trigger('click');
     expect(setup.emitted('start')?.[0]?.[0]).toEqual({ ...DEFAULT_SETTINGS, gameType: 'gomoku' });
     await setup.findAll('.mode-tabs button')[1].trigger('click');
-    expect((setup.findAll('select')[0].element as HTMLSelectElement).value).toBe('30');
+    await setup.get('.start-button').trigger('click');
+    expect(setup.emitted('start')?.at(-1)?.[0]).toMatchObject({ mode: 'local', seconds: 30 });
   });
 
   it('keeps setup usable when storage reads and writes fail', async () => {

@@ -10,12 +10,13 @@ import { useGameHint } from './useGameHint';
 import { useGameAiWorker } from './useGameAiWorker';
 import { isPlacement, legalMoves } from '../../shared/game/engine';
 import { opposite } from '../../shared/game/state';
-import { characterName, otherCharacter, DEFAULT_AI_DIFFICULTY, TURN_WARNING_MS, type Color, type GameSettings, type Reaction } from '../../shared/game/types';
+import { characterName, otherCharacter, isPieceGame, sideName, DEFAULT_AI_DIFFICULTY, TURN_WARNING_MS, type Color, type GameSettings, type Reaction } from '../../shared/game/types';
 export function useGameController() {
   const store = useGameStore();
-  const screen = ref<'setup' | 'lobby' | 'game'>('setup');
+  const screen = ref<'setup' | 'preparing' | 'lobby' | 'game'>('setup');
   const audio = useGameAudio(), reaction = useCharacterReaction();
-  const impact = useMoveImpact(() => store.state, () => audio.sfx('taunt'));
+  // Online clocks belong to the server; the compact check reaction must not block a reply.
+  const impact = useMoveImpact(() => store.state, () => audio.sfx('taunt'), () => store.settings.mode !== 'online');
   const paused = ref(document.hidden), animating = ref(false);
   const ai = useGameAiWorker(() => store.state, index => {
     if (index !== null && !paused.value) commit(index);
@@ -62,9 +63,17 @@ export function useGameController() {
         }
       } else { remotePenaltyKey = null; penalty.cancel(); }
       timer.sync(room.deadline, room.serverNow);
-    } else { screen.value = 'lobby'; store.active = false; }
+    } else {
+      cancelWork(); penalty.cancel(); timer.stop(); reaction.reset();
+      localTimeout.value = null; remotePenaltyKey = null; pendingTurn = false;
+      if (room.rematchSetup) {
+        store.start(room.settings);
+        screen.value = 'preparing';
+      } else screen.value = 'lobby';
+      store.active = false;
+    }
   }, () => { cancelWork(); penalty.cancel(); localTimeout.value = null; remotePenaltyKey = null; timer.stop(); store.active = false; screen.value = 'setup'; });
-  const myColor = computed<Color>(() => store.settings.mode === 'online' ? online.color.value : 'black');
+  const myColor = computed<Color>(() => store.settings.mode === 'online' && (screen.value !== 'preparing' || online.room.value?.rematchSetup) ? online.color.value : 'black');
   const available = computed<number[]>(() => legalMoves(store.state));
   const disconnected = computed(() => store.settings.mode === 'online' && (!online.connected.value || online.room.value?.players.some(p => !p.connected)));
   const connectionNotice = computed<string>(() => disconnected.value ? '연결을 기다리고 있어요. 서버 시간은 계속 흐릅니다.' : '');
@@ -80,23 +89,30 @@ export function useGameController() {
   const hint = useGameHint(() => store.state, canHint);
   function name(color: Color): string { return characterName(color === 'black' ? store.settings.blackCharacter : otherCharacter(store.settings.blackCharacter)); }
   const status = computed(() => {
-    if (impact.scene.value) return `한 수에 ${impact.scene.value.count}개! 메롱~ 잡아 봐!`;
+    if (screen.value === 'preparing') return '설정을 마치면 대국을 시작해요.';
+    if (impact.scene.value) {
+      if (impact.scene.value.kind !== 'capture') return `${impact.scene.value.kind === 'check' ? '체크' : '장군'}! ${name(impact.scene.value.actor)}의 메롱~ 안전한 수로 벗어나세요.`;
+      return `한 수에 ${impact.scene.value.count}개! 메롱~ 잡아 봐!`;
+    }
     if (store.state.result) return store.state.result.winner ? `${name(store.state.result.winner)}의 승리!` : '사이좋게 무승부!';
     if (connectionNotice.value) return connectionNotice.value;
     if (paused.value) return '잠시 쉬어가는 중';
     if (timeoutDecider.value) return `${name(timeoutDecider.value)}의 선택을 기다리고 있어요. 대국 시간은 멈춰 있어요.`;
     if (penalty.recipient.value) return `${name(penalty.recipient.value)}, 꿀밤 한 대! 같은 차례로 계속해요.`;
-    if (animating.value) return store.state.gameType === 'gomoku' ? '돌을 놓고 있어요…' : '돌을 뒤집고 있어요…';
+    if (animating.value) return isPieceGame(store.state.gameType) ? '다음 수를 준비하고 있어요…' : store.state.gameType === 'gomoku' ? '돌을 놓고 있어요…' : '돌을 뒤집고 있어요…';
     if (thinking.value) return `${name('white')}가 한 수를 고민하고 있어요…`;
     if (reaction.until.value > clock.value && reaction.message.value) return reaction.message.value;
-    if (store.settings.mode === 'ai') return store.state.gameType === 'gomoku' ? '당신의 차례예요. 빈 교차점에 돌을 놓아보세요.' : '당신의 차례예요. 초록 점에 돌을 놓아보세요.';
-    return `${name(store.state.turn)} · ${store.state.turn === 'black' ? '흑' : '백'}의 차례예요.`;
+    if (store.state.check) return `${sideName(store.state.gameType, store.state.check)}의 ${store.state.gameType === 'chess' ? '킹이 체크' : '궁이 장군'} 상태예요. 안전한 수로 벗어나세요.`;
+    if (store.settings.mode === 'ai') return isPieceGame(store.state.gameType) ? '당신의 차례예요. 기물을 고르고 이동할 곳을 선택하세요.' : store.state.gameType === 'gomoku' ? '당신의 차례예요. 빈 교차점에 돌을 놓아보세요.' : '당신의 차례예요. 초록 점에 돌을 놓아보세요.';
+    return `${name(store.state.turn)} · ${sideName(store.state.gameType, store.state.turn)}의 차례예요.`;
   });
   function mood(color: Color): Reaction {
+    if (screen.value === 'preparing') return 'idle';
     if (reaction.corner.value && reaction.corner.value.until > clock.value) return reaction.corner.value.actor === color ? reaction.corner.value.mood : 'sad';
     if (penalty.recipient.value) return penalty.recipient.value === color ? 'sad' : 'happy';
     if (reaction.until.value > clock.value) return reaction.reactions.value[color];
     if (store.state.result) return store.state.result.winner === null ? 'draw' : store.state.result.winner === color ? 'win' : 'lose';
+    if (store.state.check === color) return 'urgent';
     if (store.state.turn !== color) return 'idle';
     if (store.settings.seconds && timer.remaining.value <= TURN_WARNING_MS) return 'urgent';
     if (thinking.value || (store.settings.seconds && timer.remaining.value <= store.settings.seconds * 500)) return 'think';
@@ -118,13 +134,22 @@ export function useGameController() {
     if (!impact.scene.value || reaction.event.value === 'end') audio.sfx(reaction.event.value, store.state.flipped.length);
     if (store.state.result) { pendingTurn = false; return; }
     animating.value = true; pendingTurn = true;
-    const moveDuration = store.state.gameType === 'gomoku' ? 200 : 460;
-    animationTimer = window.setTimeout(nextTurn, impact.busy.value ? IMPACT_MS + 460 + store.state.flipped.length * 14 : moveDuration);
+    const moveDuration = store.state.gameType === 'reversi' ? 460 : 200;
+    const impactDuration = impact.scene.value?.kind === 'capture' ? IMPACT_MS + 460 + store.state.flipped.length * 14 : IMPACT_MS;
+    animationTimer = window.setTimeout(nextTurn, impact.busy.value ? impactDuration : moveDuration);
   }
   function move(index: number): void {
     if (!canMove.value) return;
     void audio.unlock();
     if (store.settings.mode === 'online') online.gameCommand('move', store.state, index); else commit(index);
+  }
+  function prepare(settings: GameSettings): void {
+    localTimeout.value = null; remotePenaltyKey = null;
+    cancelWork(); penalty.cancel(); timer.stop(); pendingTurn = false; audio.reset(); reaction.reset();
+    store.start({ ...settings, aiDifficulty: settings.aiDifficulty ?? DEFAULT_AI_DIFFICULTY });
+    store.active = false;
+    screen.value = 'preparing'; warnedHalf = false; lastCountdownSecond = null; paused.value = document.hidden;
+    void audio.unlock(); audio.sfx('button');
   }
   function start(settings: GameSettings): void {
     localTimeout.value = null; remotePenaltyKey = null;
@@ -166,7 +191,7 @@ export function useGameController() {
   }
   function rematch(): void {
     if (screen.value !== 'game' || !store.state.result) return;
-    if (store.settings.mode === 'online') online.gameCommand('rematch', store.state); else start(store.settings);
+    if (store.settings.mode === 'online') online.gameCommand('rematch', store.state); else prepare(store.settings);
   }
   function visibility(): void {
     paused.value = store.settings.mode === 'online' ? false : document.hidden;
@@ -198,5 +223,5 @@ export function useGameController() {
   }, { immediate: true });
   if (online.hasSession) online.connect();
   onUnmounted(() => { cancelWork(); window.clearInterval(pulse); document.removeEventListener('visibilitychange', visibility); });
-  return { store, screen, audio, online, timer, penalty, impact, hint, canHint, status, connectionNotice, thinking, animating, paused, available, canMove, myColor, timeoutLoser, timeoutPending, timeoutDecider, canDecideTimeout, decisionBlocked, chooseTimeout, name, mood, move, start, undo, finish, home, rematch };
+  return { store, screen, audio, online, timer, penalty, impact, hint, canHint, status, connectionNotice, thinking, animating, paused, available, canMove, myColor, timeoutLoser, timeoutPending, timeoutDecider, canDecideTimeout, decisionBlocked, chooseTimeout, name, mood, move, prepare, start, undo, finish, home, rematch };
 }
