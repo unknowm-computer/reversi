@@ -5,6 +5,8 @@ import { randomUUID } from 'node:crypto';
 import { createGameServer } from '../server/app';
 import { DEFAULT_SETTINGS, type GameType } from '../shared/game/types';
 import { legalMoves } from '../shared/games/reversi/rules';
+import { legalMoves as legalGomokuMoves } from '../shared/games/gomoku/rules';
+import { GOMOKU_BLOCKED_DRAW_MOVES, GOMOKU_BLOCKED_WIN_MOVES } from './fixtures/gomoku-blocked-sequence';
 import type { ClientEvents, ServerEvents, Command, CommandResponse, RoomSnapshot } from '../shared/protocol';
 type Client = Socket<ServerEvents, ClientEvents>;
 const cleanups: (() => Promise<void>)[] = [];
@@ -159,6 +161,55 @@ describe('Online timeout forgiveness', () => {
 });
 
 describe('Online game selection', () => {
+  it.each([
+    { outcome: 'opponent win', moves: GOMOKU_BLOCKED_WIN_MOVES, winner: 'white' },
+    { outcome: 'draw', moves: GOMOKU_BLOCKED_DRAW_MOVES, winner: null },
+  ] as const)('synchronizes a blocked Gomoku $outcome, stops the timer and rejects further moves', async ({ moves, winner }) => {
+    const { black, white, room, advance } = await setup(30000, 60, 'gomoku');
+    let current = room;
+    for (const [moveNumber, index] of moves.entries()) {
+      // Advance the server clock between batches to respect its request rate limit.
+      if (moveNumber > 0 && moveNumber % 30 === 0) advance(5001);
+      const state = current.game!;
+      expect(state.result).toBeNull();
+      const synced = Promise.all([
+        nextState(black, snapshot => snapshot.game?.revision === state.revision + 1),
+        nextState(white, snapshot => snapshot.game?.revision === state.revision + 1),
+      ]);
+      const response = await command(state.turn === 'black' ? black : white, {
+        type: 'move', requestId: randomUUID(), gameId: state.gameId, expectedRevision: state.revision, index,
+      });
+      expect(response.ok).toBe(true);
+      current = response.room!;
+      expect(await synced).toEqual([current, current]);
+    }
+
+    const finished = current.game!;
+    expect(finished.result).toEqual({ winner, reason: 'noLegalMoves' });
+    expect(finished.board).toContain(null);
+    expect(finished.winningLine).toEqual([]);
+    expect(legalGomokuMoves(finished.board, finished.turn)).toEqual([]);
+    expect(legalGomokuMoves(finished.board, 'white').length > 0).toBe(winner !== null);
+    expect(current.deadline).toBeNull();
+    expect(current.timeout).toBeNull();
+
+    // Even after the former deadline passes, both clients keep the final result.
+    advance(60001);
+    const request: Command = {
+      type: 'move', requestId: randomUUID(), gameId: finished.gameId,
+      expectedRevision: finished.revision, index: finished.board.indexOf(null),
+    };
+    expect((await command(black, request)).errorCode).toBe('ILLEGAL_MOVE');
+    expect((await command(white, { ...request, requestId: randomUUID() })).errorCode).toBe('NOT_YOUR_TURN');
+    for (const player of [black, white]) {
+      const inspected = await command(player, {
+        ...request, requestId: randomUUID(), expectedRevision: finished.revision + 1,
+      });
+      expect(inspected.errorCode).toBe('STALE_STATE');
+      expect(inspected.room).toEqual({ ...current, serverNow: inspected.room!.serverNow });
+    }
+  });
+
   it('keeps Reversi moves inside its own 64-cell board', async () => {
     const { black, room } = await setup();
     const response = await command(black, { type: 'move', requestId: randomUUID(), gameId: room.game!.gameId, expectedRevision: 0, index: 224 });

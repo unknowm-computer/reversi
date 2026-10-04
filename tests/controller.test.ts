@@ -7,6 +7,7 @@ import { useGameController } from '../src/composables/useGameController';
 import { IMPACT_MS } from '../src/composables/useMoveImpact';
 import { TIMEOUT_PENALTY_MS } from '../src/composables/useTimeoutPenalty';
 import { DEFAULT_SETTINGS, TIMEOUT_PENALTY_HIT_MS, type GameState, type GameType } from '../shared/game/types';
+import { blockedGomokuPosition } from './fixtures/gomoku-blocked-position';
 class FakeWorker {
   static instances: FakeWorker[] = [];
   onmessage: ((event: MessageEvent<{ gameType: GameType; gameId: string; revision: number; index: number }>) => void) | null = null;
@@ -28,6 +29,19 @@ beforeEach(() => {
 });
 afterEach(() => { wrapper?.unmount(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe('Gomoku controller integration', () => {
+  it.each(['ai', 'local'] as const)('ends a blocked %s game before starting another turn or timer', mode => {
+    controller.start({ ...DEFAULT_SETTINGS, gameType: 'gomoku', mode, seconds: 30 });
+    const { state, move } = blockedGomokuPosition(false, 'black');
+    controller.store.state = state;
+    controller.move(move);
+    expect(controller.store.state.result).toEqual({ winner: 'black', reason: 'noLegalMoves' });
+    expect(controller.canMove.value).toBe(false);
+    expect(controller.canHint.value).toBe(false);
+    vi.advanceTimersByTime(60000);
+    expect(FakeWorker.instances).toHaveLength(0);
+    expect(controller.timeoutLoser.value).toBeNull();
+    expect(controller.store.state.result).toEqual({ winner: 'black', reason: 'noLegalMoves' });
+  });
   it('shares unlimited hints, AI replies, undo and rematch without switching games', () => {
     controller.start({ ...DEFAULT_SETTINGS, gameType: 'gomoku', aiDifficulty: 4 });
     expect(controller.available.value).toHaveLength(225);

@@ -45,6 +45,7 @@ async function move(index: number): Promise<void> {
 }
 
 beforeEach(() => {
+  localStorage.removeItem('reversi-settings');
   vi.useFakeTimers();
   vi.stubGlobal('Worker', class { postMessage(): void {} terminate(): void {} });
   Object.defineProperty(document, 'hidden', { configurable: true, value: false });

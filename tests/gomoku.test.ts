@@ -3,6 +3,8 @@ import { GOMOKU_CELL_COUNT, GOMOKU_SIZE, gomokuCoordinate } from '../shared/game
 import { applyMove, getForbiddenMoveReason, initialState, isForbiddenMove, legalMoves } from '../shared/games/gomoku/rules';
 import { chooseDifficultyMove } from '../shared/games/gomoku/ai';
 import type { Cell, Color, GameState } from '../shared/game/types';
+import { opposite } from '../shared/game/state';
+import { blockedGomokuPosition } from './fixtures/gomoku-blocked-position';
 
 const point = (row: number, col: number): number => row * GOMOKU_SIZE + col;
 function position(stones: ReadonlyArray<readonly [number, number, Color]>, turn: Color = 'black'): GameState {
@@ -269,6 +271,41 @@ describe('Gomoku rules', () => {
     expect(legalMoves([])).toEqual([]);
     expect(isForbiddenMove([], 0, 'black')).toBe(false);
     expect(getForbiddenMoveReason([], 0, 'black')).toBeNull();
+  });
+
+  it.each(['black', 'white'] as const)('awards %s the win when the next player has only forbidden moves left', color => {
+    const { state, move } = blockedGomokuPosition(false, color);
+    const before = JSON.stringify(state);
+    const next = applyMove(state, move)!;
+    expect(next.result).toEqual({ winner: color, reason: 'noLegalMoves' });
+    expect(next.board).toContain(null);
+    expect(legalMoves(next.board, opposite(color))).toEqual([]);
+    expect(legalMoves(next.board, color).length).toBeGreaterThan(0);
+    expect(next.winningLine).toEqual([]);
+    expect(next.passed).toBeNull();
+    expect(next.turn).toBe(opposite(color));
+    expect(next.revision).toBe(state.revision + 1);
+    expect(JSON.stringify(state)).toBe(before);
+    expect(applyMove(next, legalMoves(next.board, color)[0])).toBeNull();
+  });
+
+  it.each(['black', 'white'] as const)('draws after %s moves when all remaining spaces are forbidden for both colors', color => {
+    const { state, move } = blockedGomokuPosition(true, color);
+    const next = applyMove(state, move)!;
+    expect(next.result).toEqual({ winner: null, reason: 'noLegalMoves' });
+    expect(next.board.filter(cell => cell === null)).toHaveLength(3);
+    expect(legalMoves(next.board, 'black')).toEqual([]);
+    expect(legalMoves(next.board, 'white')).toEqual([]);
+    expect(next.winningLine).toEqual([]);
+  });
+
+  it('keeps playing when the next player has even one legal move despite other forbidden spaces', () => {
+    const { state, move } = blockedGomokuPosition();
+    state.board[18] = null;
+    const next = applyMove(state, move)!;
+    expect(isForbiddenMove(next.board, 42, 'black')).toBe(true);
+    expect(legalMoves(next.board, 'black')).toContain(18);
+    expect(next.result).toBeNull();
   });
 
   it('draws when the final intersection is filled without five in a row', () => {

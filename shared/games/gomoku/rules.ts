@@ -149,6 +149,10 @@ export function isForbiddenMove(board: readonly Cell[], index: number, color: Co
   return getForbiddenMoveReason(board, index, color) !== null;
 }
 
+function hasLegalMove(board: readonly Cell[], color: Color): boolean {
+  return board.some((cell, index) => cell === null && !isForbiddenMove(board, index, color));
+}
+
 export function applyMove(state: GameState, index: number): GameState | null {
   if (state.result || state.board.length !== GOMOKU_CELL_COUNT || !Number.isInteger(index)
     || index < 0 || index >= GOMOKU_CELL_COUNT || state.board[index] !== null) return null;
@@ -156,11 +160,15 @@ export function applyMove(state: GameState, index: number): GameState | null {
   const board = [...state.board];
   board[index] = state.turn;
   const winningLine = connectedLines(board, index, state.turn).find(line => line.length === 5) ?? [];
-  const result: GameState['result'] = winningLine.length
+  const turn = opposite(state.turn);
+  let result: GameState['result'] = winningLine.length
     ? { winner: state.turn, reason: 'fiveInRow' }
     : board.every(cell => cell !== null) ? { winner: null, reason: 'boardFull' } : null;
+  if (!result && !hasLegalMove(board, turn)) {
+    result = { winner: hasLegalMove(board, state.turn) ? state.turn : null, reason: 'noLegalMoves' };
+  }
   return {
-    ...state, board, turn: opposite(state.turn), revision: state.revision + 1,
+    ...state, board, turn, revision: state.revision + 1,
     lastMove: index, flipped: [], passed: null, winningLine, result,
   };
 }

@@ -3,8 +3,23 @@ import { createPinia, setActivePinia } from 'pinia';
 import { useGameStore } from '../src/stores/game';
 import { initialState, legalMoves } from '../shared/games/reversi/rules';
 import { DEFAULT_SETTINGS, type Cell } from '../shared/game/types';
+import { blockedGomokuPosition } from './fixtures/gomoku-blocked-position';
 beforeEach(() => setActivePinia(createPinia()));
 describe('Undo contracts', () => {
+  it.each([false, true])('undoes a Gomoku blocked-move ending (both blocked: %s)', bothBlocked => {
+    const store = useGameStore();
+    store.start({ ...DEFAULT_SETTINGS, gameType: 'gomoku', mode: 'local', undoLimit: 3 });
+    const { state, move } = blockedGomokuPosition(bothBlocked);
+    store.state = state;
+    expect(store.move(move, 19000)).toBe(true);
+    expect(store.state.result?.reason).toBe('noLegalMoves');
+    expect(store.canUndo).toBe(true);
+    expect(store.undo()).toEqual({ actor: 'white', remaining: 19000 });
+    expect(store.state.board).toEqual(state.board);
+    expect(store.state.result).toBeNull();
+    expect(store.state.turn).toBe('white');
+    expect(store.state.winningLine).toEqual([]);
+  });
   it.each(['black', 'white'] as const)('leaves the %s turn and undo history intact when a Gomoku double three is rejected', color => {
     const store = useGameStore();
     store.start({ ...DEFAULT_SETTINGS, gameType: 'gomoku', mode: 'local', undoLimit: 3 });

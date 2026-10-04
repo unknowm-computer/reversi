@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
-import { AI_DIFFICULTIES, DEFAULT_SETTINGS, type GameSettings, type GameType, type Mode, otherCharacter, characterName } from '../../../shared/game/types';
+import { computed, ref, watch } from 'vue';
+import { AI_DIFFICULTIES, type GameSettings, type GameType, type Mode, otherCharacter, characterName } from '../../../shared/game/types';
+import { useSetupSettings } from '../../composables/useSetupSettings';
 import CharacterArt from './CharacterArt.vue';
 import AppIcon from '../common/AppIcon.vue';
 interface Props { connected: boolean; busy: boolean; error: string }
@@ -12,22 +13,19 @@ const emit = defineEmits<{
   (event: 'join', settings: GameSettings, code: string): void;
   (event: 'gameType', gameType: GameType): void;
 }>();
-const config = reactive<GameSettings>({ ...DEFAULT_SETTINGS });
+const { config } = useSetupSettings();
 const selectedGame = computed<GameType>(() => config.gameType ?? 'reversi');
 const gameName = computed<string>(() => selectedGame.value === 'gomoku' ? '오목' : '리버시');
 const games: { value: GameType; label: string; description: string }[] = [
   { value: 'reversi', label: '리버시', description: '뒤집는 재미, 마지막까지' },
   { value: 'gomoku', label: '오목', description: '다섯 알을 나란히' },
 ];
-const modeSeconds: Record<Mode, GameSettings['seconds']> = { ai: 30, local: 30, online: 30 };
 const code = ref('');
 const modes: { value: Mode; label: string; icon: 'spark' | 'users' | 'globe' }[] = [{ value: 'ai', label: '혼자 놀기', icon: 'spark' }, { value: 'local', label: '함께 놀기', icon: 'users' }, { value: 'online', label: '온라인', icon: 'globe' }];
 watch(selectedGame, gameType => emit('gameType', gameType), { immediate: true });
-watch(() => config.mode, (mode, previous) => {
-  modeSeconds[previous] = config.seconds;
-  config.seconds = modeSeconds[mode];
+watch(() => config.mode, mode => {
   if (mode === 'online') emit('online');
-});
+}, { immediate: true });
 </script>
 <template>
   <div class="setup-layout">

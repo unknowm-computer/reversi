@@ -1,15 +1,18 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
-import type { Cell, Color } from '../shared/game/types';
+import type { Cell, Color, GameType } from '../shared/game/types';
+import { initialState } from '../shared/game/engine';
 import { GOMOKU_CELL_COUNT, GOMOKU_SIZE } from '../shared/games/gomoku/board';
 import SetupPanel from '../src/components/game/SetupPanel.vue';
 import GameRules from '../src/components/game/GameRules.vue';
 import GomokuBoard from '../src/components/game/GomokuBoard.vue';
 import GomokuMatchSidebar from '../src/components/game/GomokuMatchSidebar.vue';
+import ResultPanel from '../src/components/game/ResultPanel.vue';
 
 let wrapper: VueWrapper | undefined;
 beforeEach(() => {
+  localStorage.removeItem('reversi-settings');
   vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
 });
@@ -77,6 +80,8 @@ describe('game selection and instructions', () => {
     expect(text).toContain('오목을 완성하는 수는 3-3·4-4보다 우선');
     expect(text).toContain('여섯 개 이상은 장목 금수');
     expect(text).toContain('다른 방향에서 오목을 동시에 완성하더라도 장목이면 금수');
+    expect(text).toContain('내 차례에 금수로 놓을 곳이 없으면 패배');
+    expect(text).toContain('양쪽 모두 금수로 놓을 곳이 없으면 무승부');
     expect(text).toContain('붉은 ×');
     expect(text).not.toContain('장목도 승리');
     expect(text).not.toContain('다섯 개 이상');
@@ -109,6 +114,30 @@ describe('game selection and instructions', () => {
     wrapper = mount(GameRules, { props: { gameType: 'gomoku' } });
     expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toBe('오목');
     expect(wrapper.get('[role="tabpanel"]').text()).toContain('15×15');
+  });
+});
+
+describe('no-legal-move results', () => {
+  it.each([
+    { winner: 'black' as const, heading: '베짱이의 승리!', reason: '백돌이 금수로 놓을 곳이 없어 끝났어요' },
+    { winner: 'white' as const, heading: '잔나비의 승리!', reason: '흑돌이 금수로 놓을 곳이 없어 끝났어요' },
+    { winner: null, heading: '사이좋게 무승부!', reason: '양쪽 모두 금수로 놓을 곳이 없어 무승부예요' },
+  ])('explains the Gomoku result with winner $winner', ({ winner, heading, reason }) => {
+    const game = initialState('blocked', 'gomoku');
+    game.result = { winner, reason: 'noLegalMoves' };
+    wrapper = mount(ResultPanel, { props: { game, blackCharacter: 'grasshopper', canUndo: true, online: false, requested: false, busy: false } });
+    expect(wrapper.get('h2').text()).toBe(heading);
+    expect(wrapper.get('.result-reason').text()).toContain(reason);
+    expect(wrapper.get('.result-reason').text()).not.toContain('모든 수를 마쳤어요');
+  });
+
+  it.each<GameType>(['reversi', 'gomoku'])('only describes a large stone advantage as decisive in Reversi ($0)', gameType => {
+    const game = initialState('stone-count', gameType);
+    game.board = game.board.map((_, index) => index < 30 ? 'black' : null);
+    game.result = { winner: 'black', reason: 'noLegalMoves' };
+    wrapper = mount(ResultPanel, { props: { game, blackCharacter: 'grasshopper', canUndo: false, online: false, requested: false, busy: false } });
+    expect(wrapper.get('h2').text()).toBe(`베짱이의 ${gameType === 'reversi' ? '대승' : '승리'}!`);
+    if (gameType === 'reversi') expect(wrapper.get('.result-reason').text()).toBe('모든 수를 마쳤어요 · 흑 30 : 백 0');
   });
 });
 

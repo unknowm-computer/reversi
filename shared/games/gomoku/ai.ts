@@ -1,7 +1,7 @@
 import { opposite } from '../../game/state.js';
 import type { AiDifficulty, Cell, Color, GameState } from '../../game/types.js';
 import { GOMOKU_CELL_COUNT, GOMOKU_DIRECTIONS, GOMOKU_SIZE } from './board.js';
-import { isForbiddenMove } from './rules.js';
+import { isForbiddenMove, legalMoves } from './rules.js';
 
 const CENTER = Math.floor(GOMOKU_SIZE / 2);
 const WIN = 100_000_000;
@@ -118,7 +118,11 @@ export function chooseDifficultyMove(state: GameState, difficulty: AiDifficulty)
   function search(color: Color, depth: number, alpha: number, beta: number, ply: number): number {
     if (performance.now() >= deadline) throw timeout;
     const moves = rankMoves(board, color);
-    if (!moves.length) return 0;
+    if (!moves.length) {
+      // Nearby candidate pruning alone does not prove that the player has no legal move.
+      if (legalMoves(board, color).length) return 0;
+      return legalMoves(board, opposite(color)).length ? -WIN + ply : 0;
+    }
     if (moves.some(move => move.attack >= WIN)) return WIN - ply;
     if (moves.filter(move => move.defense >= WIN).length > 1) return -WIN + ply + 1;
     if (depth === 0) {
