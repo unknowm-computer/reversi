@@ -150,8 +150,8 @@ export function createGameServer(options: ServerOptions = {}): { http: HttpServe
           ack({ ok: false, errorCode: 'STALE_ROOM', error: '최신 방 상태를 반영했습니다. 설정을 확인하고 다시 시도해 주세요.', room: snapshot(room) }); return;
         }
         if (room.game || room.rematchSetup !== 'editing') { reject('SETTINGS_LOCKED', '재대국 설정 중에만 바꿀 수 있어요.'); return; }
-        if (command.settings.gameType !== room.settings.gameType || command.settings.blackCharacter !== room.settings.blackCharacter) {
-          reject('INVALID_SETTINGS', '같은 종목과 캐릭터로 다시 시작해 주세요.'); return;
+        if (command.settings.blackCharacter !== room.settings.blackCharacter) {
+          reject('INVALID_SETTINGS', '재대국에서는 기존 캐릭터를 유지해 주세요.'); return;
         }
         room.settings = command.settings;
         room.rematchSetup = 'ready';

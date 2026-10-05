@@ -11,7 +11,7 @@ import GameSetupForm from '../src/components/game/GameSetupForm.vue';
 import VictoryScene from '../src/components/game/VictoryScene.vue';
 import { useGameStore } from '../src/stores/game';
 import * as gameController from '../src/composables/useGameController';
-import { JANGGI_PASS } from '../shared/game/pieces';
+import { encodePieceMove, JANGGI_PASS } from '../shared/game/pieces';
 import { opposite } from '../shared/game/state';
 import { DEFAULT_SETTINGS, TIMEOUT_PENALTY_MS, type Cell, type Color, type GameSettings, type GameState, type Piece } from '../shared/game/types';
 
@@ -153,37 +153,65 @@ describe('Turn-based player actions', () => {
     expect(wrapper!.findAllComponents(ModalDialog).some(modal => modal.props('title') === '상대의 결정을 기다리고 있어요')).toBe(false);
   });
 
-  it.each(['reversi', 'janggi'] as const)('shows unlimited solo %s hints without playing, then clears the hint on a move', async gameType => {
+  it.each(['reversi', 'gomoku', 'chess', 'janggi'] as const)('toggles unlimited solo %s hints without playing, then clears the hint on a move', async gameType => {
     let hintWorker: HintWorker | undefined;
+    let workerCount = 0;
     class HintWorker {
       onmessage: ((event: MessageEvent) => void) | null = null;
       request: GameState | null = null;
-      constructor() { hintWorker = this; }
+      constructor() { hintWorker = this; workerCount++; }
       postMessage(state: GameState): void { this.request = state; }
       terminate(): void {}
     }
     vi.stubGlobal('Worker', HintWorker);
     await start({ mode: 'ai', gameType });
-    const recommended = gameType === 'janggi' ? JANGGI_PASS : 19;
-    const marker = gameType === 'janggi' ? '.pass-action.suggested' : '.suggestion-marker';
+    const recommended = gameType === 'janggi' ? JANGGI_PASS : gameType === 'chess' ? encodePieceMove(52, 36) : gameType === 'gomoku' ? 112 : 19;
+    const marker = gameType === 'janggi' ? '.pass-action.suggested' : gameType === 'chess' ? '.piece-hint-arrow' : '.suggestion-marker';
     const before = JSON.stringify(store.state);
     await action('black', '힌트').trigger('click');
-    expect(action('black', '힌트').element.disabled).toBe(true);
+    expect(action('black', '힌트').element.disabled).toBe(false);
+    expect(action('black', '힌트').attributes('aria-label')).toBe('힌트 계산 취소');
+    expect(action('black', '힌트').attributes('aria-pressed')).toBe('true');
     hintWorker!.onmessage?.({ data: { gameType: hintWorker!.request!.gameType, gameId: hintWorker!.request!.gameId, revision: 0, index: recommended } } as MessageEvent);
     await nextTick();
     if (gameType === 'reversi') expect(wrapper!.get('[data-cell="19"]').attributes('aria-label')).toContain('힌트 추천');
-    else expect(action('black', '쉬기').classes()).toContain('suggested');
+    else if (gameType === 'janggi') expect(action('black', '쉬기').classes()).toContain('suggested');
     expect(wrapper!.findAll(marker)).toHaveLength(1);
     expect(JSON.stringify(store.state)).toBe(before);
     for (let i = 0; i < 5; i++) {
       expect(action('black', '힌트').element.disabled).toBe(false);
+      expect(action('black', '힌트').attributes('aria-label')).toBe('힌트 숨기기');
       await action('black', '힌트').trigger('click');
+      expect(wrapper!.find(marker).exists()).toBe(false);
+      expect(action('black', '힌트').attributes('aria-pressed')).toBe('false');
+      await action('black', '힌트').trigger('click');
+      expect(wrapper!.findAll(marker)).toHaveLength(1);
+      expect(action('black', '힌트').attributes('aria-pressed')).toBe('true');
     }
+    expect(workerCount).toBe(1);
+    expect(JSON.stringify(store.state)).toBe(before);
     expect(wrapper!.findAll(marker)).toHaveLength(1);
     if (gameType === 'janggi') await action('black', '쉬기').trigger('click');
-    else await move(19);
+    else if (gameType === 'chess') {
+      await wrapper!.get('[data-cell="52"]').trigger('click');
+      await move(36);
+    } else await move(recommended);
     expect(wrapper!.find(marker).exists()).toBe(false);
     expect(wrapper!.find('.hint-action').exists()).toBe(false);
+  });
+
+  it('lets the player cancel a pending hint from the same button', async () => {
+    await start({ mode: 'ai' });
+    const button = action('black', '힌트');
+    await button.trigger('click');
+    expect(button.attributes('aria-busy')).toBe('true');
+    expect(button.element.disabled).toBe(false);
+    await button.trigger('click');
+    expect(button.attributes('aria-busy')).toBe('false');
+    expect(button.attributes('aria-pressed')).toBe('false');
+    expect(button.attributes('aria-label')).toBe('힌트 보기 (무제한)');
+    expect(store.state.revision).toBe(0);
+    expect(store.state.turn).toBe('black');
   });
 
   it('shows Janggi pass on the current player only and ends after both players pass consecutively', async () => {

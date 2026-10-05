@@ -32,6 +32,26 @@ function position(gameType: GameType = 'chess'): GameState {
 }
 
 describe('piece selection and movement', () => {
+  it.each([
+    ['chess', 52, 36, '폰 E2', 'E4'],
+    ['janggi', 54, 45, '졸 A4', 'A5'],
+  ] as const)('shows readable %s hint steps without making the move for the player', async (gameType, from, to, sourceLabel, destinationLabel) => {
+    const state = position(gameType), move = encodePieceMove(from, to);
+    if (gameType === 'janggi') state.pieces![from] = { color: 'black', kind: 'soldier' };
+    wrapper = mount(PieceBoard, { props: { state, legal: [move], interactive: true, hintIndex: move } });
+    expect(wrapper.get(`[data-cell="${from}"] .hint-marker`).text()).toBe('1');
+    expect(wrapper.get(`[data-cell="${to}"] .hint-marker`).text()).toBe('2');
+    expect(wrapper.get('.hint-guide').text()).toContain(sourceLabel);
+    expect(wrapper.get('.hint-guide').text()).toContain(destinationLabel);
+    expect(wrapper.emitted('move')).toBeUndefined();
+    await wrapper.get(`[data-cell="${from}"]`).trigger('click');
+    await wrapper.get(`[data-cell="${to}"]`).trigger('click');
+    expect(wrapper.emitted('move')).toEqual([[move]]);
+    await wrapper.setProps({ hintIndex: null });
+    expect(wrapper.find('.hint-guide').exists()).toBe(false);
+    expect(wrapper.find('.hint-marker').exists()).toBe(false);
+  });
+
   it('grays out the opponent and immovable friendly pieces while keeping legal sources in color', async () => {
     const state = position(), move = encodePieceMove(52, 43);
     state.pieces![43] = { color: 'white', kind: 'bishop' };
@@ -271,6 +291,12 @@ describe('promotion choices', () => {
     state.pieces![8] = { color: 'black', kind: 'pawn' };
     return state;
   }
+  it('names the hinted promotion without confusing it with an ordinary pawn move', () => {
+    const move = encodePieceMove(8, 0, 'knight');
+    wrapper = mount(PieceBoard, { props: { state: promotionPosition(), legal: [move], interactive: true, hintIndex: move } });
+    expect(wrapper.get('.hint-guide').text()).toContain('나이트 승격');
+    expect(wrapper.get('[aria-live="polite"]').text()).toContain('나이트 승격을 선택하세요.');
+  });
   it('asks for the promotion piece before emitting and preserves a chosen underpromotion', async () => {
     const legal = PROMOTIONS.map(kind => encodePieceMove(8, 0, kind));
     wrapper = mount(PieceBoard, { props: { state: promotionPosition(), legal, interactive: true, hintIndex: null }, attachTo: document.body });

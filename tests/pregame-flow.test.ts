@@ -93,6 +93,33 @@ describe('Pre-game settings in the game screen', () => {
     expect(controller.timer.remaining.value).toBe(60000);
   });
 
+  it.each(['ai', 'local'] as const)('changes the %s rematch game while keeping both characters', async mode => {
+    const app = startApp();
+    controller.start({ ...DEFAULT_SETTINGS, gameType: 'reversi', mode, blackCharacter: 'grasshopper' });
+    const previousGameId = controller.store.state.gameId;
+    controller.finish('black', 'resign'); await nextTick();
+    // The header restart shares the same setup as the result button.
+    controller.rematch(); await nextTick();
+    const form = app.getComponent(GameSetupForm);
+    expect(form.props('allowSelection')).toBe(true);
+    await form.get('.game-option:nth-child(4)').trigger('click');
+    expect(form.find('.setup-summary').exists()).toBe(false);
+    expect(form.get('[data-color="black"]').find('.player-heading select').exists()).toBe(false);
+    expect(form.get('[data-color="black"]').attributes('aria-label')).toContain('베짱이 · 초');
+    expect(form.get('[data-color="white"]').attributes('aria-label')).toContain('잔나비 · 한');
+    await field('초 포진').setValue('left');
+    await form.get('.game-option:nth-child(3)').trigger('click');
+    expect(form.text()).not.toContain('초 포진');
+    expect(form.get('[data-color="black"]').attributes('aria-label')).toContain('베짱이 · 백');
+    expect(controller.canMove.value).toBe(false);
+    await form.get('form').trigger('submit');
+    expect(controller.store.settings).toMatchObject({ gameType: 'chess', blackCharacter: 'grasshopper', mode });
+    expect(controller.store.state).toMatchObject({ gameType: 'chess', revision: 0, turn: 'black', result: null });
+    expect(controller.store.state.gameId).not.toBe(previousGameId);
+    expect(controller.store.state.pieces?.filter(Boolean)).toHaveLength(32);
+    expect(JSON.parse(localStorage.getItem('reversi-settings')!).settings).toMatchObject({ gameType: 'chess', blackCharacter: 'grasshopper' });
+  });
+
   it.each(['black', 'white'] as const)('restores the online %s rematch setup, synchronizes settings and starts only after readiness', async color => {
     const app = startApp();
     controller.online.color.value = color;
@@ -109,22 +136,28 @@ describe('Pre-game settings in the game screen', () => {
     const form = app.getComponent(GameSetupForm);
     expect(form.get(`[data-color="${color}"]`).attributes('aria-label')).toMatch(/^나 ·/);
     expect(form.get('fieldset').attributes('disabled') !== undefined).toBe(color === 'white');
+    expect(form.findAll('.game-option')).toHaveLength(4);
+    expect(form.find('.setup-summary').exists()).toBe(false);
+    expect(form.find('.player-heading select').exists()).toBe(false);
     expect(form.get<HTMLButtonElement>('[type="submit"]').element.disabled).toBe(color === 'white');
     if (color === 'black') {
       await field('한 수 제한 시간').setValue('60');
       await field('초 포진').setValue('inner');
+      await form.get('.game-option:nth-child(3)').trigger('click');
       await form.get('form').trigger('submit');
-      expect(controller.online.configureRematch).toHaveBeenCalledWith(expect.objectContaining({ seconds: 60, janggiBlackFormation: 'inner' }));
+      expect(controller.online.configureRematch).toHaveBeenCalledWith(expect.objectContaining({ seconds: 60, janggiBlackFormation: 'inner', gameType: 'chess', blackCharacter: 'grasshopper' }));
     } else {
       await form.get('form').trigger('submit');
       expect(controller.online.configureRematch).not.toHaveBeenCalled();
       expect(controller.online.ready).not.toHaveBeenCalled();
     }
-    const confirmed: RoomSnapshot = { ...room, revision: 11, settings: { ...settings, seconds: 60, janggiBlackFormation: 'inner' }, rematchSetup: 'ready',
+    const confirmed: RoomSnapshot = { ...room, revision: 11, settings: { ...settings, seconds: 60, janggiBlackFormation: 'inner', gameType: 'chess', blackCharacter: 'grasshopper' }, rematchSetup: 'ready',
       players: room.players.map(player => ({ ...player, ready: player.color === 'black' })) };
     updateRoom(confirmed); await nextTick();
     expect(field('한 수 제한 시간').element.value).toBe('60');
-    expect(field('초 포진').element.value).toBe('inner');
+    expect(form.get('.game-option.selected').text()).toBe('체스✓');
+    expect(form.get('[data-color="black"]').attributes('aria-label')).toContain('베짱이 · 백');
+    expect(form.get('[data-color="white"]').attributes('aria-label')).toContain('잔나비 · 흑');
     expect(JSON.parse(localStorage.getItem('reversi-settings')!).settings.undoLimit).toBe(DEFAULT_SETTINGS.undoLimit);
     expect(form.get('fieldset').attributes('disabled')).toBeDefined();
     expect(form.get<HTMLButtonElement>('[type="submit"]').element.disabled).toBe(color === 'black');
@@ -152,6 +185,8 @@ describe('Pre-game settings in the game screen', () => {
     expect(app.findComponent(SetupPanel).exists()).toBe(false);
     expect(app.getComponent(ModalDialog).props('title')).toBe('우리, 한 판 놀까?');
     expect(app.getComponent(GameSetupForm).props('settings')).toMatchObject(settings);
+    expect(app.getComponent(GameSetupForm).find('.game-picker').exists()).toBe(false);
+    expect(app.getComponent(GameSetupForm).find('.setup-summary').exists()).toBe(true);
     const board = gameType === 'reversi' ? app.getComponent(GameBoard)
       : gameType === 'gomoku' ? app.getComponent(GomokuBoard) : app.getComponent(PieceBoard);
     expect(board.props('interactive')).toBe(false);

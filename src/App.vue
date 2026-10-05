@@ -192,7 +192,8 @@ function confirm(): void {
             :mood="game.mood(bottom)" :remaining="timer.remaining.value" :seconds="store.settings.seconds" :undo-count="undoCount(bottom)"
             :show-actions="showActions(bottom)" :can-undo="canUndoFor(bottom)" :can-resign="canResign" @undo="undoFor(bottom)" @resign="requestResign(bottom)"
             :can-pass="canPassFor(bottom)" :pass-suggested="game.hint.index.value === JANGGI_PASS" :bikjang="Boolean(store.state.janggi?.bikjang)" @pass="passFor(bottom)"
-            :show-hint="store.settings.mode === 'ai'" :can-hint="game.canHint.value" :hint-busy="game.hint.busy.value" @hint="game.hint.request"
+            :show-hint="store.settings.mode === 'ai'" :can-hint="game.canHint.value" :hint-busy="game.hint.busy.value"
+            :hint-active="game.hint.index.value !== null" @hint="game.hint.toggle"
           />
           <p v-if="game.hint.error.value" class="game-error" role="alert">{{ game.hint.error.value }}</p>
           <div v-if="store.state.result" class="game-controls">
@@ -222,13 +223,14 @@ function confirm(): void {
       @done="victoryPlayed = true"
       @hit="audio.sfx('bonk')"
     />
-    <ModalDialog v-if="screen === 'preparing'" class="game-setup-dialog" :title="onlineRematchSetup ? '한 판 더! 이번 설정은?' : '우리, 한 판 놀까?'" :dismissible="!online.busy.value" @close="game.home">
+    <ModalDialog v-if="screen === 'preparing'" class="game-setup-dialog" :title="game.rematchPreparing.value ? '한 판 더! 이번 설정은?' : '우리, 한 판 놀까?'" :dismissible="!online.busy.value" @close="game.home">
       <GameSetupForm
         :settings="store.settings"
         :busy="online.busy.value"
         :connected="online.connected.value"
         :error="store.settings.mode === 'online' ? online.error.value : ''"
         :online-rematch="onlineRematchSetup"
+        :allow-selection="game.rematchPreparing.value"
         @confirm="confirmSetup"
         @cancel="game.home"
       />

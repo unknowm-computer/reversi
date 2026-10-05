@@ -14,6 +14,7 @@ import { characterName, otherCharacter, isPieceGame, sideName, DEFAULT_AI_DIFFIC
 export function useGameController() {
   const store = useGameStore();
   const screen = ref<'setup' | 'preparing' | 'lobby' | 'game'>('setup');
+  const rematchPreparing = ref(false);
   const audio = useGameAudio(), reaction = useCharacterReaction();
   // Online clocks belong to the server; the compact check reaction must not block a reply.
   const impact = useMoveImpact(() => store.state, () => audio.sfx('taunt'), () => store.settings.mode !== 'online');
@@ -47,7 +48,7 @@ export function useGameController() {
     if (room.game) {
       const before = store.state;
       const changed = before.gameId !== room.game.gameId || before.revision !== room.game.revision;
-      store.online(room.game, room.settings); screen.value = 'game';
+      store.online(room.game, room.settings); screen.value = 'game'; rematchPreparing.value = false;
       if (changed) {
         warnedHalf = false; lastCountdownSecond = null;
         if (room.game.revision > 0 && before.gameId === room.game.gameId && (isPlacement(before, room.game) || room.game.result)) {
@@ -69,10 +70,11 @@ export function useGameController() {
       if (room.rematchSetup) {
         store.start(room.settings);
         screen.value = 'preparing';
-      } else screen.value = 'lobby';
+        rematchPreparing.value = true;
+      } else { screen.value = 'lobby'; rematchPreparing.value = false; }
       store.active = false;
     }
-  }, () => { cancelWork(); penalty.cancel(); localTimeout.value = null; remotePenaltyKey = null; timer.stop(); store.active = false; screen.value = 'setup'; });
+  }, () => { cancelWork(); penalty.cancel(); localTimeout.value = null; remotePenaltyKey = null; timer.stop(); store.active = false; screen.value = 'setup'; rematchPreparing.value = false; });
   const myColor = computed<Color>(() => store.settings.mode === 'online' && (screen.value !== 'preparing' || online.room.value?.rematchSetup) ? online.color.value : 'black');
   const available = computed<number[]>(() => legalMoves(store.state));
   const disconnected = computed(() => store.settings.mode === 'online' && (!online.connected.value || online.room.value?.players.some(p => !p.connected)));
@@ -143,7 +145,8 @@ export function useGameController() {
     void audio.unlock();
     if (store.settings.mode === 'online') online.gameCommand('move', store.state, index); else commit(index);
   }
-  function prepare(settings: GameSettings): void {
+  function prepare(settings: GameSettings, rematch = false): void {
+    rematchPreparing.value = rematch;
     localTimeout.value = null; remotePenaltyKey = null;
     cancelWork(); penalty.cancel(); timer.stop(); pendingTurn = false; audio.reset(); reaction.reset();
     store.start({ ...settings, aiDifficulty: settings.aiDifficulty ?? DEFAULT_AI_DIFFICULTY });
@@ -152,6 +155,7 @@ export function useGameController() {
     void audio.unlock(); audio.sfx('button');
   }
   function start(settings: GameSettings): void {
+    rematchPreparing.value = false;
     localTimeout.value = null; remotePenaltyKey = null;
     cancelWork(); penalty.cancel(); pendingTurn = false; audio.reset(); reaction.reset();
     store.start({ ...settings, aiDifficulty: settings.aiDifficulty ?? DEFAULT_AI_DIFFICULTY });
@@ -187,11 +191,11 @@ export function useGameController() {
   }
   async function home(): Promise<void> {
     if (store.settings.mode === 'online' || online.room.value) { if (!(await online.leave())) return; }
-    localTimeout.value = null; cancelWork(); penalty.cancel(); pendingTurn = false; timer.stop(); audio.reset(); store.active = false; screen.value = 'setup'; reaction.reset();
+    localTimeout.value = null; cancelWork(); penalty.cancel(); pendingTurn = false; timer.stop(); audio.reset(); store.active = false; screen.value = 'setup'; rematchPreparing.value = false; reaction.reset();
   }
   function rematch(): void {
     if (screen.value !== 'game' || !store.state.result) return;
-    if (store.settings.mode === 'online') online.gameCommand('rematch', store.state); else prepare(store.settings);
+    if (store.settings.mode === 'online') online.gameCommand('rematch', store.state); else prepare(store.settings, true);
   }
   function visibility(): void {
     paused.value = store.settings.mode === 'online' ? false : document.hidden;
@@ -223,5 +227,5 @@ export function useGameController() {
   }, { immediate: true });
   if (online.hasSession) online.connect();
   onUnmounted(() => { cancelWork(); window.clearInterval(pulse); document.removeEventListener('visibilitychange', visibility); });
-  return { store, screen, audio, online, timer, penalty, impact, hint, canHint, status, connectionNotice, thinking, animating, paused, available, canMove, myColor, timeoutLoser, timeoutPending, timeoutDecider, canDecideTimeout, decisionBlocked, chooseTimeout, name, mood, move, prepare, start, undo, finish, home, rematch };
+  return { store, screen, rematchPreparing, audio, online, timer, penalty, impact, hint, canHint, status, connectionNotice, thinking, animating, paused, available, canMove, myColor, timeoutLoser, timeoutPending, timeoutDecider, canDecideTimeout, decisionBlocked, chooseTimeout, name, mood, move, prepare, start, undo, finish, home, rematch };
 }

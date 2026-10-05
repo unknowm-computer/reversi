@@ -5,6 +5,7 @@ import { useSetupSettings } from '../../composables/useSetupSettings';
 import CharacterArt from './CharacterArt.vue';
 import AppIcon from '../common/AppIcon.vue';
 import GamePreview from './GamePreview.vue';
+import GameTypePicker from '../common/GameTypePicker.vue';
 interface Props { connected: boolean; busy: boolean; error: string }
 defineProps<Props>();
 const emit = defineEmits<{
@@ -17,12 +18,6 @@ const emit = defineEmits<{
 const { config } = useSetupSettings();
 const selectedGame = computed<GameType>(() => config.gameType ?? 'reversi');
 const gameName = computed<string>(() => getGameName(selectedGame.value));
-const games: { value: GameType; label: string; description: string }[] = [
-  { value: 'reversi', label: '리버시', description: '뒤집는 재미, 마지막까지' },
-  { value: 'gomoku', label: '오목', description: '다섯 알을 나란히' },
-  { value: 'chess', label: '체스', description: '상대 킹을 체크메이트' },
-  { value: 'janggi', label: '장기', description: '초와 한의 한판 승부' },
-];
 const gameTagline = computed<string>(() => ({ reversi: '01 — 64개의 칸, 무한한 가능성', gomoku: '02 — 다섯 알에 담긴 한 수의 즐거움', chess: '03 — 64개의 칸, 왕을 지키는 한 수', janggi: '04 — 궁성을 사이에 둔 초와 한' })[selectedGame.value]);
 const code = ref('');
 const modes: { value: Mode; label: string; icon: 'spark' | 'users' | 'globe' }[] = [{ value: 'ai', label: '혼자 놀기', icon: 'spark' }, { value: 'local', label: '함께 놀기', icon: 'users' }, { value: 'online', label: '온라인', icon: 'globe' }];
@@ -64,13 +59,7 @@ watch(() => config.mode, mode => {
           <div class="picker-art"><CharacterArt :character="character" /></div><strong>{{ characterName(character) }}</strong><span>{{ character === 'grasshopper' ? '느긋한 전략가' : '장난꾸러기 승부사' }}</span>
         </button>
       </div>
-      <div class="game-picker" role="group" aria-label="게임 선택">
-        <button v-for="game in games" :key="game.value" class="game-option" :class="{ selected: selectedGame === game.value }" :aria-pressed="selectedGame === game.value" @click="config.gameType = game.value">
-          <GamePreview :game-type="game.value" />
-          <span class="game-caption"><strong>{{ game.label }}</strong><span>{{ game.description }}</span></span>
-          <span class="game-check" aria-hidden="true">{{ selectedGame === game.value ? '✓' : '' }}</span>
-        </button>
-      </div>
+      <GameTypePicker v-model="config.gameType" class="setup-game-picker" />
       <template v-if="config.mode === 'online'">
         <button class="primary start-button" :disabled="!connected || busy" @click="emit('create', { ...config })">{{ connected ? '새로운 방 만들기' : '서버에 연결 중…' }}<AppIcon name="arrow" /></button>
         <form class="join-form" @submit.prevent="emit('join', { ...config }, code)"><label class="sr-only" for="room-code">친구의 방 코드</label><input id="room-code" v-model="code" placeholder="친구의 방 코드 6자리" maxlength="6" pattern="[A-Za-z2-9]{6}" required autocomplete="off" /><button class="secondary" :disabled="!connected || busy">입장</button></form>
@@ -110,11 +99,7 @@ h1 > span { color: var(--text-accent); }
 .setup-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 30px; box-shadow: 0 8px 24px #343f2510; }
 .card-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }h2 { font-size: 26px; margin-top: 9px; letter-spacing: -.04em; }
 .card-leaf { width: 46px; height: 46px; display: grid; place-items: center; background: #edf0e2; border-radius: 50%; color: #75916b; }.card-leaf svg { width: 24px; height: 24px; }
-.game-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin: var(--space-4) 0 var(--space-6); }
-.game-option { position: relative; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--line); border-radius: 13px; text-align: left; }
-.game-option.selected { background: #f0f3e5; border-color: #819566; box-shadow: inset 0 0 0 1px #819566; }
-.game-caption { display: flex; flex-direction: column; gap: 3px; }.game-caption strong { font-size: var(--text-body); }.game-caption > span { font-size: var(--text-caption); line-height: 1.4; color: var(--muted); }
-.game-check { position: absolute; top: 3px; right: 6px; font-size: var(--text-caption); color: var(--text-accent); }
+.setup-game-picker { margin: var(--space-4) 0 var(--space-6); }
 .mode-tabs { display: flex; padding: 5px; border-radius: 12px; background: #eeeee5; gap: 3px; }.mode-tabs button { flex: 1; font-size: var(--text-small); font-weight: 600; padding: 11px 2px; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 9px; color: var(--muted); }.mode-tabs svg { width: 15px; height: 15px; }.mode-tabs button.selected { background: var(--card); color: var(--ink); box-shadow: 0 2px 5px #29372912; }
 .mode-description { display: flex; line-height: 1.6; align-items: center; gap: 7px; font-size: var(--text-small); color: var(--muted); padding: var(--space-3) 0 var(--space-4); }.status-dot { width: 5px; height: 5px; border-radius: 50%; background: #91a371; }
 .field-heading { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 13px; }h3 { font-size: var(--text-label); }.field-heading > span { color: var(--muted); font-size: var(--text-caption); }
@@ -123,7 +108,6 @@ h1 > span { color: var(--text-accent); }
 @media (max-width: $compact) { .setup-layout { gap: 34px; }.hero-monkey { width: 160px; }.hero-bug { width: 158px; }.orbit { width: 280px; }.orbit-two { width: 240px; }.mini-board { width: 136px; height: 129px; bottom: 22px; }.speech { font-size: var(--text-caption); }.club-stamp { right: 0; width: 90px; height: 90px; }.welcome-foot { font-size: var(--text-caption); } }
 @media (max-width: $mobile) { .setup-layout { grid-template-columns: 1fr; padding-top: 30px; gap: 26px; }.welcome { text-align: center; }.edition { justify-content: center; margin-bottom: 15px; }.edition .eyebrow { font-size: var(--text-caption); }h1 { font-size: 42px; }.intro { font-size: var(--text-label); margin-top: 15px; }.illustration { height: 240px; width: min(400px, 100%); margin: 10px auto 0; }.hero-monkey { top: 30px; left: 0; }.hero-bug { top: 25px; }.mini-board { bottom: 0; }.club-stamp { bottom: 0; }.welcome-foot { display: none; }.setup-card { padding: 24px; }.orbit { max-width: 80%; }.speech-monkey { top: 9px; } }
 @media (max-width: $mobile) {
-  .game-option { flex-direction: column; text-align: center; padding: var(--space-3) var(--space-2); }
   .mode-tabs button { flex-direction: column; gap: 4px; white-space: nowrap; }
   .mode-tabs svg { flex-shrink: 0; }
 }

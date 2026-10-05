@@ -64,7 +64,7 @@ export function useOnlineRoom(onState: (room: RoomSnapshot) => void, onClosed: (
   function configureRematch(config: GameSettings): void {
     if (busy.value || !room.value || room.value.rematchSetup !== 'editing' || color.value !== 'black') return;
     void send({ type: 'configure-rematch', requestId: createId(), expectedRoomRevision: room.value.revision,
-      settings: { ...config, gameType: room.value.settings.gameType ?? 'reversi', blackCharacter: room.value.settings.blackCharacter, mode: 'online', undoLimit: 0 } });
+      settings: { ...config, gameType: config.gameType ?? 'reversi', blackCharacter: room.value.settings.blackCharacter, mode: 'online', undoLimit: 0 } });
   }
   function chooseCharacter(character: Character): void { if (!busy.value) void send({ type: 'character', requestId: createId(), character }); }
   function gameCommand(type: 'move' | 'resign' | 'rematch', game: GameState, index = 0): void {

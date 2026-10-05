@@ -81,7 +81,7 @@ afterEach(() => {
 });
 
 describe('online room cancellation and connection reuse', () => {
-  it('submits rematch settings only as the editing host with the latest room revision', async () => {
+  it('submits a new game with the existing characters only as the editing host with the latest room revision', async () => {
     await createRoom();
     const configuring: RoomSnapshot = { ...snapshot(), revision: 14, rematchSetup: 'editing' };
     online.room.value = configuring;
@@ -94,7 +94,7 @@ describe('online room cancellation and connection reuse', () => {
     online.configureRematch(edited);
     expect(socket.emitWithAck).toHaveBeenLastCalledWith('command', expect.objectContaining({
       type: 'configure-rematch', expectedRoomRevision: 14,
-      settings: expect.objectContaining({ seconds: 60, gameType: settings.gameType, blackCharacter: settings.blackCharacter, undoLimit: 0, mode: 'online' }),
+      settings: expect.objectContaining({ seconds: 60, gameType: 'chess', blackCharacter: settings.blackCharacter, undoLimit: 0, mode: 'online' }),
     }));
     online.configureRematch(edited);
     expect(socket.emitWithAck).toHaveBeenCalledTimes(2);

@@ -11,6 +11,7 @@ import {
 } from '../../../shared/game/types';
 import { useSetupSettings } from '../../composables/useSetupSettings';
 import AppIcon from '../common/AppIcon.vue';
+import GameTypePicker from '../common/GameTypePicker.vue';
 import GameSetupPlayers from './GameSetupPlayers.vue';
 import JanggiFormationPreview from './JanggiFormationPreview.vue';
 
@@ -19,6 +20,7 @@ interface Props {
   busy: boolean;
   connected: boolean;
   error: string;
+  allowSelection?: boolean;
   onlineRematch?: { phase: 'editing' | 'ready'; host: boolean; ready: boolean };
 }
 const props = defineProps<Props>();
@@ -72,8 +74,12 @@ function confirm(): void {
 
 <template>
   <form class="game-setup-form" aria-label="대국 설정" @submit.prevent="confirm">
-    <p class="setup-summary"><AppIcon name="leaf" />{{ summary }}</p>
+    <p v-if="!allowSelection" class="setup-summary"><AppIcon name="leaf" />{{ summary }}</p>
     <p v-if="rematchNotice" class="connection-status" role="status">{{ rematchNotice }}</p>
+    <fieldset v-if="allowSelection" :disabled="busy || readOnly" class="game-selection">
+      <legend>이번 판의 게임</legend>
+      <GameTypePicker v-model="config.gameType" compact />
+    </fieldset>
     <fieldset :disabled="busy || readOnly" class="player-settings">
       <legend class="sr-only">이번 판의 플레이어</legend>
       <GameSetupPlayers :settings="config" :self-color="onlineRematch && !onlineRematch.host ? 'white' : 'black'">
@@ -139,6 +145,8 @@ function confirm(): void {
 .setup-summary { display: flex; align-items: center; justify-content: center; gap: var(--space-2); color: var(--text-accent); font-size: var(--text-small); }
 .setup-summary svg { width: 16px; height: 16px; }
 .player-settings { min-width: 0; margin: 0; padding: 0; border: 0; }
+.game-selection { min-width: 0; margin: 0; padding: 0; border: 0; }
+.game-selection legend { margin-bottom: var(--space-2); font-size: var(--text-small); }
 .formation-choice { display: grid; gap: var(--space-1); font-size: var(--text-caption); text-align: left; }
 .formation-choice select { min-width: 0; width: 100%; padding-inline-start: var(--space-2); font-size: var(--text-small); }
 .setup-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); min-width: 0; margin: 0; padding: var(--space-3); border: 1px dashed var(--line); border-radius: 16px; background: var(--paper); }

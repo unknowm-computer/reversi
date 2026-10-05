@@ -7,6 +7,7 @@ import { useGamepad } from '../../composables/useGamepad';
 import { usePieceBoardFeedback } from '../../composables/usePieceBoardFeedback';
 import AppIcon from '../common/AppIcon.vue';
 import PieceArt from './PieceArt.vue';
+import PieceHintArrow from './PieceHintArrow.vue';
 
 interface Props { state: GameState; legal: number[]; interactive: boolean; hintIndex: number | null; perspective?: Color }
 interface BoardMove extends PieceMove { code: number }
@@ -33,8 +34,13 @@ const moves = computed<BoardMove[]>(() => props.legal.flatMap(code => {
 }));
 const sources = computed<Set<number>>(() => new Set(moves.value.map(move => move.from)));
 const destinations = computed<Set<number>>(() => new Set(moves.value.filter(move => move.from === selected.value).map(move => move.to)));
-const suggestion = computed<PieceMove | null>(() => props.hintIndex !== null && props.legal.includes(props.hintIndex) ? decodePieceMove(props.hintIndex) : null);
-const hintMessage = computed<string>(() => suggestion.value ? `힌트: ${coordinate(suggestion.value.from)}에서 ${coordinate(suggestion.value.to)}로 이동해 보세요.` : props.hintIndex === JANGGI_PASS && props.legal.includes(JANGGI_PASS) ? '힌트: 이번 수는 쉬어 보세요.' : '');
+const suggestion = computed<BoardMove | null>(() => moves.value.find(move => move.code === props.hintIndex) ?? null);
+const suggestedPiece = computed<Piece | null>(() => suggestion.value ? pieceAt(suggestion.value.from) : null);
+const suggestedPromotion = computed<string>(() => suggestion.value && suggestedPiece.value?.kind === 'pawn'
+  && [0, rows.value - 1].includes(Math.floor(suggestion.value.to / columns.value)) ? pieceName(suggestion.value.promotion) : '');
+const hintMessage = computed<string>(() => suggestion.value && suggestedPiece.value
+  ? `힌트: 1번 ${coordinate(suggestion.value.from)}의 말(${displayedPieceName(suggestedPiece.value)})을 선택한 뒤, 2번 ${coordinate(suggestion.value.to)}로 이동해 보세요.${suggestedPromotion.value ? ` ${suggestedPromotion.value} 승격을 선택하세요.` : ''}`
+  : props.hintIndex === JANGGI_PASS && props.legal.includes(JANGGI_PASS) ? '힌트: 이번 수는 쉬어 보세요.' : '');
 
 function pieceAt(index: number): Piece | null { return props.state.pieces?.[index] ?? null; }
 function coordinate(index: number): string { return `${String.fromCharCode(65 + index % columns.value)}${rows.value - Math.floor(index / columns.value)}`; }
@@ -153,16 +159,26 @@ const pad = useGamepad(enabled, {
           :tabindex="focusIndex === index ? 0 : -1" @focus="focusIndex = index" @keydown="navigate($event, index)" @click="choose(index)">
           <span v-if="pieceAt(index)" class="piece-holder" :class="{ general: pieceAt(index)?.kind === 'general', subdued: subdued(index) }"><PieceArt :piece="pieceAt(index)!" :game-type="state.gameType" /></span>
           <span v-if="enabled && destinations.has(index)" class="destination-marker" :class="{ capture: pieceAt(index) }" aria-hidden="true" />
-          <span v-if="suggestion?.to === index" class="hint-marker" aria-hidden="true"><AppIcon name="hint" /></span>
+          <template v-if="suggestion?.from === index || suggestion?.to === index">
+            <span class="hint-outline" aria-hidden="true" />
+            <span class="hint-marker" :class="suggestion?.from === index ? 'source' : 'target'" aria-hidden="true">{{ suggestion?.from === index ? '1' : '2' }}</span>
+          </template>
           <span v-if="captureCell === index" class="capture-burst" aria-hidden="true"><i /><i /><i /></span>
           <span v-if="checked(index)" class="check-badge" aria-hidden="true">{{ state.gameType === 'janggi' ? '장군' : '체크' }}</span>
         </button>
+        <PieceHintArrow v-if="suggestion" :from="suggestion.from" :to="suggestion.to" :columns="columns" :rows="rows" :reversed="reversed" />
       </div>
       <div v-if="promotionOptions.length" ref="promotionPanel" class="promotion-panel" role="group" aria-label="승격 기물 선택" @keydown="promotionKey">
         <div class="promotion-heading"><strong>어떤 기물로 바꿀까요?</strong><button type="button" aria-label="승격 선택 취소" @click="cancelPromotion"><AppIcon name="close" /></button></div>
         <div class="promotion-choices"><button v-for="(option, index) in promotionOptions" :key="option.code" type="button" :data-promotion="option.promotion" :aria-label="`${pieceName(option.promotion)}으로 승격`" @focus="promotionIndex = index" @click="send(option)"><PieceArt :piece="{ color: state.turn, kind: option.promotion }" game-type="chess" /><span>{{ pieceName(option.promotion) }}</span></button></div>
       </div>
-      <div class="board-label" aria-hidden="true">JANNABI & GRASSHOPPER · {{ state.gameType === 'janggi' ? 'JANGGI' : 'CHESS' }} CLUB</div>
+      <div v-if="suggestion && suggestedPiece" class="board-label hint-guide" aria-hidden="true">
+        <AppIcon name="hint" />
+        <span class="hint-step source">1</span><strong>{{ displayedPieceName(suggestedPiece) }} {{ coordinate(suggestion.from) }}</strong>
+        <AppIcon name="arrow" />
+        <span class="hint-step target">2</span><strong>{{ coordinate(suggestion.to) }}{{ suggestedPromotion ? ` · ${suggestedPromotion} 승격` : '' }}</strong>
+      </div>
+      <div v-else class="board-label" aria-hidden="true">JANNABI & GRASSHOPPER · {{ state.gameType === 'janggi' ? 'JANGGI' : 'CHESS' }} CLUB</div>
     </div>
     <p class="sr-only" role="status" aria-live="polite">{{ hintMessage }}</p>
     <p class="sr-only" role="status">{{ selected === null ? '' : `${coordinate(selected)} 선택됨. 이동할 곳을 선택하세요.` }}</p>
@@ -180,7 +196,7 @@ const pad = useGamepad(enabled, {
 .piece-cell.selected .piece-holder { transform: translateY(-5%); }
 .piece-cell::after { content: ''; position: absolute; inset: 0; pointer-events: none; }
 .piece-cell.last-from::after, .piece-cell.last-to::after { background: #efca6455; }
-.piece-cell.hint-from::after, .piece-cell.hint-to::after { box-shadow: inset 0 0 0 3px var(--hint-gold); }
+.piece-cell.hint-from::after, .piece-cell.hint-to::after { background: color-mix(in srgb, var(--hint-gold) 45%, transparent); }
 .piece-cell.selected::after { background: #efcd665c; box-shadow: inset 0 0 0 3px #c6a245; }
 .piece-cell.checked::after { background: #c34e4580; box-shadow: inset 0 0 0 3px var(--danger); }
 .piece-cell.check-arrival::after { animation: check-arrival .72s ease-out; }
@@ -192,12 +208,19 @@ const pad = useGamepad(enabled, {
 .piece-cell:focus-visible, .piece-cell.pad-cursor { outline: 3px solid #f2c86b; outline-offset: -3px; z-index: 2; }
 .destination-marker { position: absolute; width: 23%; height: 23%; border-radius: 50%; background: #244f4280; z-index: 2; pointer-events: none; }
 .destination-marker.capture { width: 91%; height: 91%; background: transparent; border: 3px solid #2858489c; }
-.hint-marker { position: absolute; display: grid; place-items: center; right: 2%; bottom: 2%; width: 36%; height: 36%; min-width: 13px; min-height: 13px; border-radius: 50%; background: var(--hint-soft); color: var(--hint-ink); z-index: 2; pointer-events: none; }
-.hint-marker svg { width: 75%; height: 75%; }
+.hint-outline { position: absolute; inset: 3%; border: 3px solid var(--hint-ink); border-radius: 10%; box-shadow: inset 0 0 0 2px var(--hint-soft), 0 0 0 1px var(--hint-soft); z-index: 2; pointer-events: none; }
+.hint-to .hint-outline { border-style: dashed; }
+.hint-marker, .hint-step { display: grid; place-items: center; border: 2px solid var(--hint-soft); border-radius: 50%; background: var(--hint-ink); color: var(--hint-soft); font-weight: 800; line-height: 1; }
+.hint-marker { position: absolute; left: 2%; top: 2%; width: 30%; height: 30%; min-width: 16px; min-height: 16px; font-size: clamp(11px, 1.5vw, 17px); z-index: 3; pointer-events: none; box-shadow: 0 1px 3px #35250755; }
+.hint-marker.target, .hint-step.target { background: var(--hint-soft); color: var(--hint-ink); border-color: var(--hint-ink); }
 .coordinates { position: absolute; display: grid; color: var(--board-text); font-family: ui-monospace, monospace; font-size: var(--text-micro); text-align: center; }
 .coordinates.top { grid-template-columns: repeat(var(--board-columns), minmax(0, 1fr)); left: 25px; right: 13px; top: 5px; }
 .coordinates.side { grid-template-rows: repeat(var(--board-rows), minmax(0, 1fr)); top: 25px; bottom: 25px; left: 3px; width: 19px; align-items: center; }
 .board-label { position: absolute; bottom: 5px; left: 0; width: 100%; text-align: center; color: var(--board-text); font-family: ui-monospace, monospace; font-size: var(--text-micro); }
+.board-label.hint-guide { bottom: 3px; display: flex; align-items: center; justify-content: center; gap: var(--space-1); color: var(--hint-soft); font-family: inherit; font-size: var(--text-caption); white-space: nowrap; }
+.hint-guide svg { width: 15px; height: 15px; flex-shrink: 0; }
+.hint-step { width: 17px; height: 17px; font-size: 11px; flex-shrink: 0; }
+.janggi .board-label.hint-guide { color: var(--hint-ink); }
 .janggi .piece-board-frame { border-color: #a17d4c; background: #d6ae72; box-shadow: 0 5px 0 #a97c46, 0 14px 26px #63472917; }
 .janggi .piece-board { border: 0; background: repeating-linear-gradient(3deg, transparent 0 9px, #af7e3910 10px, transparent 11px 24px), #e9c88f; border-radius: 5px; }
 .janggi .piece-cell { background: transparent; }

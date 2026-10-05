@@ -4,6 +4,8 @@ import { defineComponent, ref } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { applyMove, initialState, legalMoves } from '../shared/games/reversi/rules';
 import { applyMove as applyGomokuMove, initialState as initialGomokuState } from '../shared/games/gomoku/rules';
+import { initialState as initialJanggiState } from '../shared/games/janggi/rules';
+import { JANGGI_PASS } from '../shared/game/pieces';
 import { useGameHint } from '../src/composables/useGameHint';
 import type { GameAiAnswer, GameAiRequest } from '../src/workers/gameAi.types';
 
@@ -72,6 +74,102 @@ describe('solo hints', () => {
       state.value = applyMove(state.value, move)!;
       expect(hint.index.value).toBeNull();
     }
+  });
+
+  it('toggles a hint off and back on immediately without recomputing the same position', () => {
+    hint.toggle();
+    FakeWorker.instances[0].reply(19);
+    expect(hint.index.value).toBe(19);
+
+    hint.toggle();
+    expect(hint.index.value).toBeNull();
+    expect(hint.busy.value).toBe(false);
+    hint.toggle();
+    expect(hint.index.value).toBe(19);
+    expect(FakeWorker.instances).toHaveLength(1);
+
+    hint.request();
+    expect(hint.index.value).toBe(19);
+    hint.toggle();
+    hint.request();
+    expect(hint.index.value).toBe(19);
+    expect(FakeWorker.instances).toHaveLength(1);
+  });
+
+  it('cancels a pending hint when toggled off and ignores its late answer after toggling on again', () => {
+    hint.toggle();
+    const stale = FakeWorker.instances[0];
+    hint.toggle();
+    expect(stale.terminated).toBe(true);
+    expect(hint.busy.value).toBe(false);
+    expect(hint.index.value).toBeNull();
+
+    hint.toggle();
+    stale.reply(19); stale.onerror?.();
+    expect(hint.busy.value).toBe(true);
+    expect(hint.index.value).toBeNull();
+    expect(hint.error.value).toBeNull();
+    FakeWorker.instances[1].reply(26);
+    expect(hint.index.value).toBe(26);
+  });
+
+  it('discards a hidden hint when the position changes even if its move is legal in the new position', () => {
+    state.value = initialGomokuState('hidden-hint');
+    hint.toggle(); FakeWorker.instances[0].reply(0);
+    hint.toggle();
+    state.value = applyGomokuMove(state.value, 112)!;
+    hint.toggle();
+    expect(hint.index.value).toBeNull();
+    expect(hint.busy.value).toBe(true);
+    expect(FakeWorker.instances).toHaveLength(2);
+    FakeWorker.instances[1].reply(1);
+    expect(hint.index.value).toBe(1);
+  });
+
+  it('discards a hidden hint when hints become unavailable and starts fresh when allowed again', () => {
+    hint.toggle(); FakeWorker.instances[0].reply(19);
+    hint.toggle();
+    allowed.value = false;
+    hint.toggle();
+    expect(hint.index.value).toBeNull();
+    expect(FakeWorker.instances).toHaveLength(1);
+    allowed.value = true;
+    hint.toggle();
+    expect(hint.index.value).toBeNull();
+    expect(hint.busy.value).toBe(true);
+    expect(FakeWorker.instances).toHaveLength(2);
+  });
+
+  it('does not toggle on when unavailable, finished or without legal moves', () => {
+    allowed.value = false; hint.toggle();
+    allowed.value = true; state.value.result = { winner: 'white', reason: 'resign' }; hint.toggle();
+    state.value = initialState('full-toggle'); state.value.board.fill('black'); hint.toggle();
+    expect(FakeWorker.instances).toHaveLength(0);
+    expect(hint.index.value).toBeNull();
+    expect(hint.busy.value).toBe(false);
+  });
+
+  it('allows retrying a failed hint with the toggle', () => {
+    hint.toggle(); FakeWorker.instances[0].onerror?.();
+    expect(hint.error.value).toContain('다시');
+    hint.toggle();
+    expect(hint.error.value).toBeNull();
+    FakeWorker.instances[1].reply(19);
+    expect(hint.index.value).toBe(19);
+  });
+
+  it.each([
+    { game: 'gomoku', createState: initialGomokuState, move: 0 },
+    { game: 'janggi', createState: initialJanggiState, move: JANGGI_PASS },
+  ])('toggles and caches the $game hint value $move without treating it as missing', ({ createState, move }) => {
+    state.value = createState('special-hint');
+    hint.toggle(); FakeWorker.instances[0].reply(move);
+    expect(hint.index.value).toBe(move);
+    hint.toggle();
+    expect(hint.index.value).toBeNull();
+    hint.toggle();
+    expect(hint.index.value).toBe(move);
+    expect(FakeWorker.instances).toHaveLength(1);
   });
 
   it('does not create work when unavailable, finished or without legal moves', () => {

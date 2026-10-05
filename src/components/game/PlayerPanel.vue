@@ -20,11 +20,13 @@ interface Props {
   showHint?: boolean;
   canHint?: boolean;
   hintBusy?: boolean;
+  hintActive?: boolean;
   canPass?: boolean;
   passSuggested?: boolean;
   bikjang?: boolean;
 }
-const props = withDefaults(defineProps<Props>(), { gameType: 'reversi', showActions: false, canUndo: false, canResign: false, showHint: false, canHint: false, hintBusy: false, canPass: false, passSuggested: false, bikjang: false });
+const props = withDefaults(defineProps<Props>(), { gameType: 'reversi', showActions: false, canUndo: false, canResign: false, showHint: false, canHint: false, hintBusy: false, hintActive: false, canPass: false, passSuggested: false, bikjang: false });
+const hintLabel = computed<string>(() => props.hintBusy ? '힌트 계산 취소' : props.hintActive ? '힌트 숨기기' : '힌트 보기 (무제한)');
 const displaySide = computed<string>(() => sideName(props.gameType, props.color));
 const markerColor = computed<string>(() => props.gameType === 'chess' ? (props.color === 'black' ? 'white' : 'black') : props.gameType === 'janggi' ? (props.color === 'black' ? 'cho' : 'han') : props.color);
 const emit = defineEmits<{ (event: 'undo'): void; (event: 'resign'): void; (event: 'hint'): void; (event: 'pass'): void }>();
@@ -42,7 +44,7 @@ const emit = defineEmits<{ (event: 'undo'): void; (event: 'resign'): void; (even
       </div>
       <div class="score"><strong>{{ String(count).padStart(2, '0') }}</strong><span>{{ gameType === 'gomoku' ? '번의 착수' : isPieceGame(gameType) ? '남은 기물' : '개의 돌' }}</span></div>
       <div v-if="showActions" class="player-actions">
-        <button v-if="showHint" class="secondary hint-action" :disabled="!canHint || hintBusy" :aria-busy="hintBusy" :aria-label="hintBusy ? '힌트를 찾는 중' : '힌트 보기 (무제한)'" title="추천할 칸 보기 · 무제한" @click="emit('hint')"><AppIcon name="hint" />힌트</button>
+        <button v-if="showHint" class="secondary hint-action" :disabled="!canHint" :aria-busy="hintBusy" :aria-pressed="hintActive || hintBusy" :aria-label="hintLabel" :title="hintLabel" @click="emit('hint')"><AppIcon name="hint" />힌트</button>
         <button v-if="gameType === 'janggi'" type="button" class="secondary pass-action" :class="{ suggested: passSuggested && canPass }" :disabled="!canPass" @click="canPass && emit('pass')"><AppIcon name="arrow" />{{ bikjang ? '빅장 수락' : '쉬기' }}</button>
         <button class="secondary" :disabled="!canUndo" :aria-label="`무르기 (${undoCount === '∞' ? '무제한' : `${undoCount}회 남음`})`" @click="emit('undo')"><AppIcon name="undo" />무르기 ({{ undoCount }})</button>
         <button class="secondary resign-action" :disabled="!canResign" @click="emit('resign')"><AppIcon name="flag" />기권</button>
@@ -96,6 +98,7 @@ const emit = defineEmits<{ (event: 'undo'): void; (event: 'resign'): void; (even
 .player-actions .resign-action:hover:not(:disabled) { border-color: var(--danger); background: var(--danger-soft); }
 .player-actions .hint-action { color: var(--hint-ink); border-color: var(--hint-gold); background: var(--hint-soft); }
 .player-actions .hint-action:hover:not(:disabled) { border-color: var(--hint-ink); background: var(--hint-soft); }
+.player-actions .hint-action[aria-pressed="true"], .player-actions .hint-action[aria-pressed="true"]:hover:not(:disabled) { color: var(--hint-soft); border-color: var(--hint-ink); background: var(--hint-ink); }
 .player-actions .pass-action.suggested { border-color: var(--hint-gold); background: var(--hint-soft); }
 .hint-action[aria-busy="true"] svg { animation: hint-thinking .7s ease-in-out infinite alternate; }
 .player-actions svg { width: 13px; height: 13px; flex-shrink: 0; }

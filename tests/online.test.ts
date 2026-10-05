@@ -166,7 +166,7 @@ describe('Authoritative online games', () => {
 });
 
 describe('Online rematch settings', () => {
-  it('allows only the host to configure a rematch and preserves the room game and characters', async () => {
+  it('allows the host to change the game with the existing characters, starting only after guest confirmation', async () => {
     const { black, white, room } = await setup();
     const settings = { ...room.settings, mode: 'online' as const, undoLimit: 0 as const };
     const activeRequest: Command = { type: 'configure-rematch', requestId: randomUUID(), expectedRoomRevision: room.revision, settings };
@@ -177,22 +177,30 @@ describe('Online rematch settings', () => {
     for (const client of [black, white]) {
       expect((await command(client, { type: 'character', requestId: randomUUID(), character: 'grasshopper' })).errorCode).toBe('SETTINGS_LOCKED');
     }
-    for (const invalid of [
-      { ...settings, gameType: 'gomoku' as const },
-      { ...settings, blackCharacter: settings.blackCharacter === 'jannabi' ? 'grasshopper' as const : 'jannabi' as const },
-    ]) {
-      expect((await command(black, { ...request, requestId: randomUUID(), settings: invalid })).errorCode).toBe('INVALID_SETTINGS');
-    }
-    for (const invalid of [{ ...settings, seconds: 15 }, { ...settings, undoLimit: 3 }, { ...settings, mode: 'local' }]) {
+    const changedCharacter = settings.blackCharacter === 'jannabi' ? 'grasshopper' as const : 'jannabi' as const;
+    expect((await command(black, {
+      ...request, requestId: randomUUID(), settings: { ...settings, gameType: 'chess', blackCharacter: changedCharacter },
+    })).errorCode).toBe('INVALID_SETTINGS');
+    for (const invalid of [{ ...settings, seconds: 15 }, { ...settings, undoLimit: 3 }, { ...settings, mode: 'local' },
+      { ...settings, gameType: 'unknown' }, { ...settings, blackCharacter: 'unknown' }]) {
       expect((await command(black, { ...request, requestId: randomUUID(), settings: invalid } as unknown as Command)).errorCode).toBe('INVALID_COMMAND');
     }
     const stale = await command(black, { ...request, expectedRoomRevision: editing.revision - 1 });
     expect(stale.errorCode).toBe('STALE_ROOM');
     expect(stale.room).toEqual({ ...editing, serverNow: stale.room!.serverNow });
-    const accepted = await command(black, request);
+    const changed = { ...settings, gameType: 'chess' as const };
+    const published = nextState(white, snapshot => snapshot.rematchSetup === 'ready');
+    const accepted = await command(black, { ...request, settings: changed });
     expect(accepted.ok).toBe(true);
-    expect(accepted.room!.settings).toEqual(settings);
+    expect(accepted.room!.settings).toEqual(changed);
     expect(accepted.room!.code).toBe(room.code);
+    expect(accepted.room!.game).toBeNull();
+    expect((await published).settings).toEqual(changed);
+    const started = await command(white, { type: 'ready', requestId: randomUUID() });
+    expect(started.room!.settings).toEqual(changed);
+    expect(started.room!.game).toMatchObject({ gameType: 'chess', revision: 0, result: null });
+    expect(started.room!.game!.gameId).not.toBe(room.game!.gameId);
+    expect(started.room!.game!.pieces?.filter(Boolean)).toHaveLength(32);
   });
 
   it('does not publish or start again when consent and settings requests are retried', async () => {
