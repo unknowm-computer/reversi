@@ -27,7 +27,7 @@ function loadPreferences(): SetupPreferences {
       const times = isRecord(value.modeSeconds) ? value.modeSeconds : {};
       return {
         settings: {
-          gameType: validValue(settings.gameType, ['reversi', 'gomoku', 'chess', 'janggi'] as const, 'reversi'),
+          gameType: validValue(settings.gameType, ['reversi', 'gomoku', 'chess', 'janggi', 'battleship'] as const, 'reversi'),
           mode: validValue(settings.mode, ['ai', 'local', 'online'] as const, DEFAULT_SETTINGS.mode),
           seconds: validValue(settings.seconds, allowedSeconds, DEFAULT_SETTINGS.seconds),
           undoLimit: validValue(settings.undoLimit, [-1, 0, 1, 3] as const, DEFAULT_SETTINGS.undoLimit),
@@ -50,6 +50,9 @@ function loadPreferences(): SetupPreferences {
 export function useSetupSettings(): { config: GameSettings } {
   const saved = loadPreferences();
   const config = reactive<GameSettings>(saved.settings);
+  watch(() => [config.mode, config.gameType], () => {
+    if (config.mode === 'local' && config.gameType === 'battleship') config.gameType = 'reversi';
+  }, { immediate: true, flush: 'sync' });
   const modeSeconds = saved.modeSeconds;
   modeSeconds[config.mode] = config.seconds;
 

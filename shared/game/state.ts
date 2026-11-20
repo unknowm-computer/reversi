@@ -24,6 +24,11 @@ export function snapshotGameState(state: GameState): GameState {
     ...(state.pieces ? { pieces: state.pieces.map(piece => piece ? { ...piece } : null) } : {}),
     ...(state.lastFrom !== undefined ? { lastFrom: state.lastFrom } : {}),
     ...(state.check !== undefined ? { check: state.check } : {}),
+    ...(state.battleship ? { battleship: {
+      ...(state.battleship.sunkSubmarines ? { sunkSubmarines: { ...state.battleship.sunkSubmarines } } : {}),
+      fleets: { black: state.battleship.fleets.black.map(ship => [...ship]), white: state.battleship.fleets.white.map(ship => [...ship]) },
+      shots: { black: [...state.battleship.shots.black], white: [...state.battleship.shots.white] },
+    } } : {}),
     ...(state.chess ? { chess: { ...state.chess, positionHistory: [...state.chess.positionHistory] } } : {}),
     ...(state.janggi ? { janggi: { ...state.janggi, positionHistory: [...state.janggi.positionHistory] } } : {}),
   };

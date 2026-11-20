@@ -55,7 +55,7 @@ describe('game selection and instructions', () => {
     const rules = mount(GameRules, { props: { gameType: 'reversi' }, attachTo: document.body });
     wrapper = rules;
     const tabs = rules.findAll('[role="tab"]');
-    expect(tabs.map(tab => tab.text())).toEqual(['리버시', '오목', '체스', '장기']);
+    expect(tabs.map(tab => tab.text())).toEqual(['리버시', '오목', '체스', '장기', '배틀쉽']);
     expect(rules.findAll('[role="tabpanel"]')).toHaveLength(1);
     const panelId = rules.get('[role="tabpanel"]').attributes('id');
     expect(panelId).toBeTruthy();
@@ -99,7 +99,7 @@ describe('game selection and instructions', () => {
     expect(rules.text()).not.toContain('금수');
 
     const keyboardSelections: [string, number][] = [
-      ['ArrowLeft', 3], ['ArrowRight', 0], ['End', 3], ['Home', 0],
+      ['ArrowLeft', 4], ['ArrowRight', 0], ['End', 4], ['Home', 0],
     ];
     for (const [key, index] of keyboardSelections) {
       await rules.get('[role="tab"][aria-selected="true"]').trigger('keydown', { key });

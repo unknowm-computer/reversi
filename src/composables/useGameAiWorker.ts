@@ -1,4 +1,5 @@
 import { onUnmounted, ref, type Ref } from 'vue';
+import { playerView } from '../../shared/games/battleship/rules';
 import { snapshotGameState } from '../../shared/game/state';
 import type { AiDifficulty, GameState } from '../../shared/game/types';
 import type { GameAiAnswer, GameAiRequest } from '../workers/gameAi.types';
@@ -25,7 +26,8 @@ export function useGameAiWorker(
 
   function request(difficulty?: AiDifficulty): void {
     cancel();
-    const state = snapshotGameState(getState());
+    const current = getState();
+    const state = snapshotGameState(playerView(current, current.turn));
     busy.value = true;
     try {
       const task = new Worker(new URL('../workers/gameAi.worker.ts', import.meta.url), { type: 'module' });

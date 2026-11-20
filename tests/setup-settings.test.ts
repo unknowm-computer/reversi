@@ -121,3 +121,15 @@ describe('remembered setup settings', () => {
     expect(setup.emitted('start')?.[0]?.[0]).toEqual({ ...DEFAULT_SETTINGS, gameType: 'gomoku' });
   });
 });
+
+it('disables Battleship for shared-screen play and clears the previous fleet selection', async () => {
+  const setup = openSetup();
+  const fleet = setup.findAll('.game-option').find(option => option.text().includes('배틀쉽'))!;
+  await fleet.trigger('click');
+  await setup.findAll('.mode-tabs button')[1].trigger('click');
+  expect(fleet.attributes('disabled')).toBeDefined();
+  await setup.get('.start-button').trigger('click');
+  expect(setup.emitted('start')?.at(-1)?.[0]).toMatchObject({ gameType: 'reversi', mode: 'local' });
+  await setup.findAll('.mode-tabs button')[2].trigger('click');
+  expect(fleet.attributes('disabled')).toBeUndefined();
+});

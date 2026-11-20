@@ -42,7 +42,7 @@ const emit = defineEmits<{ (event: 'undo'): void; (event: 'resign'): void; (even
         <svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17" class="track" /><circle cx="20" cy="20" r="17" class="progress" :style="{ strokeDashoffset: 107 * (1 - Math.min(1, remaining / (seconds * 1000))) }" /></svg>
         <span>{{ Math.ceil(remaining / 1000) }}</span>
       </div>
-      <div class="score"><strong>{{ String(count).padStart(2, '0') }}</strong><span>{{ gameType === 'gomoku' ? '번의 착수' : isPieceGame(gameType) ? '남은 기물' : '개의 돌' }}</span></div>
+      <div class="score"><strong>{{ String(count).padStart(2, '0') }}</strong><span>{{ gameType === 'battleship' ? '칸 명중' : gameType === 'gomoku' ? '번의 착수' : isPieceGame(gameType) ? '남은 기물' : '개의 돌' }}</span></div>
       <div v-if="showActions" class="player-actions">
         <button v-if="showHint" class="secondary hint-action" :disabled="!canHint" :aria-busy="hintBusy" :aria-pressed="hintActive || hintBusy" :aria-label="hintLabel" :title="hintLabel" @click="emit('hint')"><AppIcon name="hint" />힌트</button>
         <button v-if="gameType === 'janggi'" type="button" class="secondary pass-action" :class="{ suggested: passSuggested && canPass }" :disabled="!canPass" @click="canPass && emit('pass')"><AppIcon name="arrow" />{{ bikjang ? '빅장 수락' : '쉬기' }}</button>

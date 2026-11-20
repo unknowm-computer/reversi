@@ -18,7 +18,7 @@ const emit = defineEmits<{
 const { config } = useSetupSettings();
 const selectedGame = computed<GameType>(() => config.gameType ?? 'reversi');
 const gameName = computed<string>(() => getGameName(selectedGame.value));
-const gameTagline = computed<string>(() => ({ reversi: '01 — 64개의 칸, 무한한 가능성', gomoku: '02 — 다섯 알에 담긴 한 수의 즐거움', chess: '03 — 64개의 칸, 왕을 지키는 한 수', janggi: '04 — 궁성을 사이에 둔 초와 한' })[selectedGame.value]);
+const gameTagline = computed<string>(() => ({ reversi: '01 — 64개의 칸, 무한한 가능성', gomoku: '02 — 다섯 알에 담긴 한 수의 즐거움', chess: '03 — 64개의 칸, 왕을 지키는 한 수', battleship: '05 — 바다에 숨은 다섯 척의 함대', janggi: '04 — 궁성을 사이에 둔 초와 한' })[selectedGame.value]);
 const code = ref('');
 const modes: { value: Mode; label: string; icon: 'spark' | 'users' | 'globe' }[] = [{ value: 'ai', label: '혼자 놀기', icon: 'spark' }, { value: 'local', label: '함께 놀기', icon: 'users' }, { value: 'online', label: '온라인', icon: 'globe' }];
 watch(selectedGame, gameType => emit('gameType', gameType), { immediate: true });
@@ -39,6 +39,12 @@ watch(() => config.mode, mode => {
         <div class="hero-monkey"><CharacterArt character="jannabi" /></div>
         <div class="hero-bug"><CharacterArt character="grasshopper" /></div>
         <div v-if="selectedGame === 'reversi'" class="mini-board" aria-hidden="true"><div v-for="n in 36" :key="n" class="mini-cell"><span v-if="[9,15,16,21,22,28].includes(n)" :class="n % 3 === 0 ? 'mini-black' : 'mini-white'" /></div></div>
+        <div v-else-if="selectedGame === 'battleship'" class="mini-board mini-fleet" aria-hidden="true">
+          <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+            <circle cx="32" cy="11" r="5" />
+            <path d="M32 16v40M22 24h20M9 38q3 14 16 16 4 0 7 4 3-4 7-4 13-2 16-16M8 46l1-9 8 4m30 0 8-4 1 9" />
+          </svg>
+        </div>
         <GamePreview v-else-if="isPieceGame(selectedGame)" :game-type="selectedGame" class="mini-board mini-pieces" />
         <div v-else class="mini-board mini-gomoku" aria-hidden="true">
           <svg viewBox="0 0 100 100"><path v-for="n in 7" :key="n" :d="`M ${n * 12 + 2} 14 V 86 M 14 ${n * 12 + 2} H 86`" /><circle v-for="n in 4" :key="`black-${n}`" :cx="n * 12 + 14" :cy="n * 12 + 14" r="5.4" class="preview-black" /><circle v-for="n in 3" :key="`white-${n}`" :cx="n * 12 + 26" cy="38" r="5.4" class="preview-white" /></svg>
@@ -52,14 +58,14 @@ watch(() => config.mode, mode => {
       <div class="card-heading"><div><p class="eyebrow muted">LET'S PLAY</p><h2 id="setup-title">오늘의 한 판</h2></div><span class="card-leaf"><AppIcon name="leaf" /></span></div>
       <div class="mode-tabs" role="group" aria-label="대전 모드"><button v-for="mode in modes" :key="mode.value" :aria-pressed="config.mode === mode.value" :class="{ selected: config.mode === mode.value }" @click="config.mode = mode.value"><AppIcon :name="mode.icon" />{{ mode.label }}</button></div>
       <div class="mode-description"><span class="status-dot" />{{ config.mode === 'ai' ? `${characterName(otherCharacter(config.blackCharacter))}와 가볍게 실력을 겨뤄보세요.` : config.mode === 'local' ? '한 기기에서 번갈아 한 수씩 두어보세요.' : '친구에게 방 코드를 보내 함께 즐겨보세요.' }}</div>
-      <div class="field-heading"><h3>{{ config.mode === 'ai' ? '오늘의 플레이어' : '선공 캐릭터 선택' }}</h3><span>{{ sideName(selectedGame, 'black') }}{{ selectedGame === 'janggi' ? '가' : selectedGame === 'chess' ? '이' : '돌이' }} 먼저 시작해요</span></div>
+      <div class="field-heading"><h3>{{ config.mode === 'ai' ? '오늘의 플레이어' : '선공 캐릭터 선택' }}</h3><span>{{ sideName(selectedGame, 'black') }}{{ selectedGame === 'battleship' || selectedGame === 'janggi' ? '가' : selectedGame === 'chess' ? '이' : '돌이' }} 먼저 시작해요</span></div>
       <div class="character-picker" role="group" aria-label="선공 캐릭터">
         <button v-for="character in ['grasshopper', 'jannabi'] as const" :key="character" class="character-option" :class="{ chosen: config.blackCharacter === character }" :aria-pressed="config.blackCharacter === character" @click="config.blackCharacter = character">
           <span class="character-check">{{ config.blackCharacter === character ? '✓' : '' }}</span>
           <div class="picker-art"><CharacterArt :character="character" /></div><strong>{{ characterName(character) }}</strong><span>{{ character === 'grasshopper' ? '느긋한 전략가' : '장난꾸러기 승부사' }}</span>
         </button>
       </div>
-      <GameTypePicker v-model="config.gameType" class="setup-game-picker" />
+      <GameTypePicker :mode="config.mode" v-model="config.gameType" class="setup-game-picker" />
       <template v-if="config.mode === 'online'">
         <button class="primary start-button" :disabled="!connected || busy" @click="emit('create', { ...config })">{{ connected ? '새로운 방 만들기' : '서버에 연결 중…' }}<AppIcon name="arrow" /></button>
         <form class="join-form" @submit.prevent="emit('join', { ...config }, code)"><label class="sr-only" for="room-code">친구의 방 코드</label><input id="room-code" v-model="code" placeholder="친구의 방 코드 6자리" maxlength="6" pattern="[A-Za-z2-9]{6}" required autocomplete="off" /><button class="secondary" :disabled="!connected || busy">입장</button></form>
@@ -92,6 +98,8 @@ h1 > span { color: var(--text-accent); }
 .mini-gomoku { display: block; background: #e4bf80; border-color: #b6874e; box-shadow: -2px 6px 0 #966b3d, 0 12px 20px #63472922; }
 .mini-gomoku svg { width: 100%; height: 100%; }.mini-gomoku path { stroke: #976f40; stroke-width: .7; fill: none; }
 .mini-pieces { display: grid; grid-template-columns: 1fr; border-color: #8b7750; box-shadow: -2px 6px 0 #71623f, 0 12px 20px #63472922; }
+.mini-fleet { grid-template-columns: 1fr; place-items: center; background: #a8d2cb; color: #294d58; border-color: #345966; box-shadow: -2px 6px 0 #243e48, 0 12px 20px #26475122; }
+.mini-fleet svg { width: 76%; height: 76%; }
 .preview-black { fill: #26382d; }.preview-white { fill: #fcf5df; stroke: #c9bfa3; stroke-width: .7; }
 .hero-spark { position: absolute; color: #b0b984; font-size: 24px; }.spark-a { left: 47%; top: 40px; }.spark-b { right: 5%; bottom: 19px; }
 .club-stamp { position: absolute; right: 7%; bottom: -5px; width: 100px; height: 100px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid #acb699; border-radius: 50%; color: var(--text-accent); font-size: var(--text-micro); letter-spacing: .02em; transform: rotate(13deg); line-height: 1.1; }.club-stamp strong { font-size: var(--text-small); }

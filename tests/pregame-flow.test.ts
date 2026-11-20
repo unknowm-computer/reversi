@@ -136,7 +136,7 @@ describe('Pre-game settings in the game screen', () => {
     const form = app.getComponent(GameSetupForm);
     expect(form.get(`[data-color="${color}"]`).attributes('aria-label')).toMatch(/^나 ·/);
     expect(form.get('fieldset').attributes('disabled') !== undefined).toBe(color === 'white');
-    expect(form.findAll('.game-option')).toHaveLength(4);
+    expect(form.findAll('.game-option')).toHaveLength(5);
     expect(form.find('.setup-summary').exists()).toBe(false);
     expect(form.find('.player-heading select').exists()).toBe(false);
     expect(form.get<HTMLButtonElement>('[type="submit"]').element.disabled).toBe(color === 'white');

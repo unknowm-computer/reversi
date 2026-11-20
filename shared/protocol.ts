@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import type { Color, GameSettings, GameState } from './game/types.js';
+import { validFleet } from './games/battleship/rules.js';
 import { MAX_MOVE_CODE } from './game/pieces.js';
 const formationSchema = z.enum(['outer', 'inner', 'left', 'right']);
 const settingsSchema = z.object({
-  gameType: z.enum(['reversi', 'gomoku', 'chess', 'janggi']).default('reversi'),
+  gameType: z.enum(['reversi', 'gomoku', 'chess', 'janggi', 'battleship']).default('reversi'),
   mode: z.literal('online'), seconds: z.union([z.literal(0), z.literal(30), z.literal(60)]),
   undoLimit: z.literal(0), blackCharacter: z.enum(['jannabi', 'grasshopper']),
   janggiBlackFormation: formationSchema.optional(), janggiWhiteFormation: formationSchema.optional(),
@@ -14,7 +15,7 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('create'), ...identity, settings: settingsSchema }),
   z.object({ type: z.literal('join'), ...identity, code: z.string().regex(/^[A-Z2-9]{6}$/) }),
   z.object({ type: z.literal('resume'), ...identity, code: z.string().regex(/^[A-Z2-9]{6}$/), token: z.string().uuid() }),
-  z.object({ type: z.literal('ready'), ...identity }),
+  z.object({ type: z.literal('ready'), ...identity, fleet: z.array(z.array(z.number().int().min(0).max(99)).max(5)).length(5).refine(validFleet).optional() }),
   z.object({ type: z.literal('configure-rematch'), ...identity, expectedRoomRevision: z.number().int().nonnegative(), settings: settingsSchema }),
   z.object({ type: z.literal('character'), ...identity, character: z.enum(['jannabi', 'grasshopper']) }),
   z.object({ type: z.literal('move'), ...gameIdentity, index: z.number().int().min(0).max(MAX_MOVE_CODE) }),

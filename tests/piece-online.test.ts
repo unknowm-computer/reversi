@@ -26,7 +26,7 @@ function nextState(socket: Client, predicate: (room: RoomSnapshot) => boolean): 
   });
 }
 
-async function setup(gameType: GameType, seconds: 0 | 30 | 60 = 0) {
+async function setup(gameType: GameType, seconds: 0 | 30 | 60 = 0, guestFleet?: number[][]) {
   let now = Date.now();
   const app = createGameServer({ tickMs: 10, now: () => now });
   const clients: Client[] = [];
@@ -54,7 +54,7 @@ async function setup(gameType: GameType, seconds: 0 | 30 | 60 = 0) {
   expect(created.ok).toBe(true);
   await command(white, { type: 'join', requestId: randomUUID(), code: created.room!.code });
   await command(black, { type: 'ready', requestId: randomUUID() });
-  const ready = await command(white, { type: 'ready', requestId: randomUUID() });
+  const ready = await command(white, { type: 'ready', requestId: randomUUID(), fleet: guestFleet });
   return { black, white, created, room: ready.room!, connect, advance: (ms: number): void => { now += ms; } };
 }
 
@@ -207,4 +207,27 @@ describe('Authoritative online piece games', () => {
     expect(ended.room!.game!.result).toEqual({ winner: 'white', reason: 'timeout' });
     expect(ended.room!.game!.pieces).toEqual(room.game!.pieces);
   });
+});
+
+it('keeps the opposing fleet private in Battleship broadcasts, replies and reconnects', async () => {
+  const guestFleet = [[0, 1, 2, 3, 4], [10, 20, 30, 40], [90, 91, 92], [22, 32, 42], [88, 89]];
+  const { black, white, room, created, connect } = await setup('battleship', 0, guestFleet);
+  const guest = room.game!.battleship!;
+  expect(guest.fleets.black).toEqual([]);
+  expect(guest.fleets.white).toEqual(guestFleet);
+  const target = guest.fleets.white[0][0];
+  const pushed = Promise.all([nextState(black, r => r.game?.revision === 1), nextState(white, r => r.game?.revision === 1)]);
+  const shot = { type: 'move' as const, requestId: randomUUID(), gameId: room.game!.gameId, expectedRevision: 0, index: target };
+  const reply = await command(black, shot);
+  const [hostUpdate, guestUpdate] = await pushed;
+  expect(hostUpdate.game).toEqual(reply.room!.game);
+  const host = hostUpdate.game!.battleship!;
+  expect(host.fleets.black).toHaveLength(5);
+  expect(host.fleets.white).toEqual([]);
+  expect(guestUpdate.game!.battleship!.fleets).toEqual(guest.fleets);
+  expect(host.shots.black[target]).toBe('hit');
+  expect(guestUpdate.game!.battleship!.shots).toEqual(host.shots);
+  expect((await command(black, shot)).room!.game).toEqual(hostUpdate.game);
+  const restored = await command(await connect(), { type: 'resume', requestId: randomUUID(), code: room.code, token: created.token! });
+  expect(restored.room!.game).toEqual(hostUpdate.game);
 });

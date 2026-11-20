@@ -60,7 +60,7 @@ export function useOnlineRoom(onState: (room: RoomSnapshot) => void, onClosed: (
       color.value = response.color; session = { code: response.room.code, token: response.token, color: response.color }; save(); receive(response.room);
     }
   }
-  function ready(): void { if (!busy.value) void send({ type: 'ready', requestId: createId() }); }
+  function ready(fleet?: number[][]): void { if (!busy.value) void send({ type: 'ready', requestId: createId(), fleet }); }
   function configureRematch(config: GameSettings): void {
     if (busy.value || !room.value || room.value.rematchSetup !== 'editing' || color.value !== 'black') return;
     void send({ type: 'configure-rematch', requestId: createId(), expectedRoomRevision: room.value.revision,

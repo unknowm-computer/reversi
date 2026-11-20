@@ -38,6 +38,7 @@ const contentId = useId();
       </div>
       <slot />
     </div>
+    <slot name="fleet" />
   </aside>
 </template>
 

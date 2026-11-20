@@ -7,7 +7,7 @@ interface Props { gameType?: GameType }
 const props = withDefaults(defineProps<Props>(), { gameType: 'reversi' });
 const emit = defineEmits<{ (event: 'close'): void }>();
 const selectedGame = ref<GameType>(props.gameType);
-const games: readonly GameType[] = ['reversi', 'gomoku', 'chess', 'janggi'];
+const games: readonly GameType[] = ['reversi', 'gomoku', 'chess', 'janggi', 'battleship'];
 const tabs = ref<HTMLElement | null>(null);
 const id = useId();
 watch(() => props.gameType, gameType => { selectedGame.value = gameType; });
@@ -42,6 +42,16 @@ function navigateTabs(event: KeyboardEvent, index: number): void {
       >{{ gameName(game) }}</button>
     </div>
     <div :id="`${id}-panel`" class="rules-panel" role="tabpanel" :aria-labelledby="`${id}-tab-${selectedGame}`" tabindex="0">
+      <template v-if="selectedGame === 'battleship'">
+        <p>혼자 놀기와 온라인 대전에서 상대의 함선 다섯 척을 먼저 격침하세요.</p>
+        <ol>
+          <li><strong>10×10 바다에 함대를 배치해요.</strong><span>3칸 함선 두 척 중 한 척은 잠수함이에요. 설정을 마치면 대국 보드에서 자동 배치를 확인할 수 있어요. 함선을 끌어서 옮기거나 짧게 눌러 회전하세요. 붉게 표시된 위치에서는 함선이 원래 자리에 남아요. 다섯 척이 준비되면 시작해요. 대국 중 대국 정보의 ‘내 함대’에서 배와 상대의 사격 기록을 볼 수 있어요.</span></li>
+          <li><strong>한 차례에 한 발씩 쏴요.</strong><span>‘상대 해역’에서 미탐색 칸을 고르세요. 불꽃은 명중, 푸른 물결은 빗나감이에요. 명중해도 상대 차례로 넘어가요.</span></li>
+          <li><strong>한 배의 모든 칸을 맞히면 격침이에요.</strong><span>격침된 배는 실제 위치에 붉은 선체로 나타나요. 상대의 마지막 배가 가라앉으면 승리해요.</span></li>
+        </ol>
+        <p>클릭·터치로 사격하거나 방향키로 이동한 뒤 Enter로 쏘세요. 조이패드는 십자키와 아래쪽 버튼을 사용해요.</p>
+      </template>
+      <template v-else>
       <p v-if="selectedGame === 'gomoku'">가로, 세로, 대각선으로 내 돌 다섯 개를 나란히 연결해 보세요.</p>
       <p v-else-if="selectedGame === 'reversi'">상대 돌을 내 돌 사이에 끼우면 내 색으로 뒤집을 수 있어요.</p>
       <PieceGameRules v-else :game-type="selectedGame === 'chess' ? 'chess' : 'janggi'" />
@@ -106,6 +116,7 @@ function navigateTabs(event: KeyboardEvent, index: number): void {
         <h3 id="online-help-title">친구와 온라인으로</h3>
         <p>게임을 선택하고 온라인에서 방을 만든 뒤 6자리 방 코드를 친구에게 보내세요. 친구는 코드를 입력하면 방에서 정한 게임으로 입장해요. 두 사람 모두 준비하면 시작해요.</p>
       </section>
+      </template>
     </div>
     <button class="primary" @click="emit('close')">좋아요, 이해했어요<AppIcon name="arrow" /></button>
   </div>

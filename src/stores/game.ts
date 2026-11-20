@@ -10,7 +10,12 @@ export const useGameStore = defineStore('game', () => {
   const history = ref<HistoryEntry[]>([]);
   const undoUsed = ref<Record<Color, number>>({ black: 0, white: 0 });
   const active = ref(false);
-  const counts = computed(() => score(state.value.board));
+  const counts = computed(() => {
+    const shots = state.value.battleship?.shots;
+    if (!shots) return score(state.value.board);
+    const hits = (side: Color): number => shots[side].filter(shot => shot === 'hit' || shot === 'sunk').length;
+    return { black: hits('black'), white: hits('white'), empty: 0 };
+  });
   function findUndoIndex(color?: Color): number {
     if (settings.value.mode === 'online' || (state.value.result && ['resign', 'timeout', 'disconnect'].includes(state.value.result.reason))) return -1;
     if (settings.value.mode === 'ai' && color === 'white') return -1;
@@ -23,9 +28,10 @@ export const useGameStore = defineStore('game', () => {
   const undoIndex = computed<number>(() => findUndoIndex());
   const canUndo = computed(() => undoIndex.value >= 0);
   function canUndoFor(color: Color): boolean { return findUndoIndex(color) >= 0; }
-  function start(next: GameSettings): void {
+  function start(next: GameSettings, fleet?: number[][]): void {
     settings.value = { ...next, gameType: next.gameType ?? 'reversi' };
     state.value = initialState(createId(), settings.value.gameType, settings.value);
+    if (state.value.battleship && fleet) state.value.battleship.fleets.black = fleet.map(ship => [...ship]);
     history.value = []; undoUsed.value = { black: 0, white: 0 }; active.value = true;
   }
   function move(index: number, remaining: number): boolean {

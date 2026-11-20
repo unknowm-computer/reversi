@@ -13,7 +13,7 @@ import { opposite } from '../../shared/game/state';
 import { characterName, otherCharacter, isPieceGame, sideName, DEFAULT_AI_DIFFICULTY, TURN_WARNING_MS, type Color, type GameSettings, type Reaction } from '../../shared/game/types';
 export function useGameController() {
   const store = useGameStore();
-  const screen = ref<'setup' | 'preparing' | 'lobby' | 'game'>('setup');
+  const screen = ref<'setup' | 'preparing' | 'deploying' | 'lobby' | 'game'>('setup');
   const rematchPreparing = ref(false);
   const audio = useGameAudio(), reaction = useCharacterReaction();
   // Online clocks belong to the server; the compact check reaction must not block a reply.
@@ -53,7 +53,7 @@ export function useGameController() {
         warnedHalf = false; lastCountdownSecond = null;
         if (room.game.revision > 0 && before.gameId === room.game.gameId && (isPlacement(before, room.game) || room.game.result)) {
           reaction.transition(before, room.game, store.settings.blackCharacter);
-          if (!impact.scene.value || reaction.event.value === 'end') audio.sfx(reaction.event.value, room.game.flipped.length);
+          if (reaction.event.value === 'end' || (!impact.scene.value && room.game.gameType !== 'battleship')) audio.sfx(reaction.event.value, room.game.flipped.length);
         } else reaction.reset();
       }
       if (room.timeout?.phase === 'penalty') {
@@ -67,7 +67,10 @@ export function useGameController() {
     } else {
       cancelWork(); penalty.cancel(); timer.stop(); reaction.reset();
       localTimeout.value = null; remotePenaltyKey = null; pendingTurn = false;
-      if (room.rematchSetup) {
+      if (room.settings.gameType === 'battleship' && (screen.value === 'deploying' || room.rematchSetup === 'ready')) {
+        if (screen.value !== 'deploying') deploy(room.settings);
+        else store.settings = { ...room.settings };
+      } else if (room.rematchSetup) {
         store.start(room.settings);
         screen.value = 'preparing';
         rematchPreparing.value = true;
@@ -91,6 +94,7 @@ export function useGameController() {
   const hint = useGameHint(() => store.state, canHint);
   function name(color: Color): string { return characterName(color === 'black' ? store.settings.blackCharacter : otherCharacter(store.settings.blackCharacter)); }
   const status = computed(() => {
+    if (screen.value === 'deploying') return '보드에서 내 함대를 배치하세요.';
     if (screen.value === 'preparing') return '설정을 마치면 대국을 시작해요.';
     if (impact.scene.value) {
       if (impact.scene.value.kind !== 'capture') return `${impact.scene.value.kind === 'check' ? '체크' : '장군'}! ${name(impact.scene.value.actor)}의 메롱~ 안전한 수로 벗어나세요.`;
@@ -101,6 +105,8 @@ export function useGameController() {
     if (paused.value) return '잠시 쉬어가는 중';
     if (timeoutDecider.value) return `${name(timeoutDecider.value)}의 선택을 기다리고 있어요. 대국 시간은 멈춰 있어요.`;
     if (penalty.recipient.value) return `${name(penalty.recipient.value)}, 꿀밤 한 대! 같은 차례로 계속해요.`;
+    if (store.state.gameType === 'battleship') return store.state.turn === myColor.value
+      ? '상대 해역에서 사격할 칸을 고르세요.' : '상대가 사격할 칸을 고르고 있어요.';
     if (animating.value) return isPieceGame(store.state.gameType) ? '다음 수를 준비하고 있어요…' : store.state.gameType === 'gomoku' ? '돌을 놓고 있어요…' : '돌을 뒤집고 있어요…';
     if (thinking.value) return `${name('white')}가 한 수를 고민하고 있어요…`;
     if (reaction.until.value > clock.value && reaction.message.value) return reaction.message.value;
@@ -133,7 +139,7 @@ export function useGameController() {
     if (!store.move(index, timer.remaining.value)) return;
     timer.stop(); warnedHalf = false; lastCountdownSecond = null;
     reaction.transition(before, store.state, store.settings.blackCharacter);
-    if (!impact.scene.value || reaction.event.value === 'end') audio.sfx(reaction.event.value, store.state.flipped.length);
+    if (reaction.event.value === 'end' || (!impact.scene.value && store.state.gameType !== 'battleship')) audio.sfx(reaction.event.value, store.state.flipped.length);
     if (store.state.result) { pendingTurn = false; return; }
     animating.value = true; pendingTurn = true;
     const moveDuration = store.state.gameType === 'reversi' ? 460 : 200;
@@ -154,11 +160,16 @@ export function useGameController() {
     screen.value = 'preparing'; warnedHalf = false; lastCountdownSecond = null; paused.value = document.hidden;
     void audio.unlock(); audio.sfx('button');
   }
-  function start(settings: GameSettings): void {
+  function deploy(settings: GameSettings): void {
+    store.start(settings);
+    store.active = false;
+    screen.value = 'deploying';
+  }
+  function start(settings: GameSettings, fleet?: number[][]): void {
     rematchPreparing.value = false;
     localTimeout.value = null; remotePenaltyKey = null;
     cancelWork(); penalty.cancel(); pendingTurn = false; audio.reset(); reaction.reset();
-    store.start({ ...settings, aiDifficulty: settings.aiDifficulty ?? DEFAULT_AI_DIFFICULTY });
+    store.start({ ...settings, aiDifficulty: settings.aiDifficulty ?? DEFAULT_AI_DIFFICULTY }, fleet);
     screen.value = 'game'; warnedHalf = false; lastCountdownSecond = null; paused.value = document.hidden;
     timer.start(settings.seconds * 1000); if (paused.value) timer.pause();
     void audio.unlock(); audio.sfx('button');
@@ -222,10 +233,14 @@ export function useGameController() {
       if (timer.remaining.value > 0 && timer.remaining.value <= store.settings.seconds * 500 && !warnedHalf) { warnedHalf = true; audio.sfx('tick'); }
     }
   }, 150);
-  watch(() => [screen.value, store.counts.empty, Boolean(store.state.result)] as const, () => {
-    audio.changeScene(screen.value !== 'game' ? 'lobby' : store.state.result ? 'off' : store.state.gameType === 'reversi' && store.counts.empty <= 10 ? 'late' : 'game');
-  }, { immediate: true });
+  watch(() => {
+    if (screen.value === 'deploying') return 'battleship';
+    if (screen.value !== 'game') return 'lobby';
+    if (store.state.result) return 'off';
+    if (store.state.gameType === 'battleship') return 'battleship';
+    return store.state.gameType === 'reversi' && store.counts.empty <= 10 ? 'late' : 'game';
+  }, scene => audio.changeScene(scene), { immediate: true });
   if (online.hasSession) online.connect();
   onUnmounted(() => { cancelWork(); window.clearInterval(pulse); document.removeEventListener('visibilitychange', visibility); });
-  return { store, screen, rematchPreparing, audio, online, timer, penalty, impact, hint, canHint, status, connectionNotice, thinking, animating, paused, available, canMove, myColor, timeoutLoser, timeoutPending, timeoutDecider, canDecideTimeout, decisionBlocked, chooseTimeout, name, mood, move, prepare, start, undo, finish, home, rematch };
+  return { store, screen, rematchPreparing, audio, online, timer, penalty, impact, hint, canHint, status, connectionNotice, thinking, animating, paused, available, canMove, myColor, timeoutLoser, timeoutPending, timeoutDecider, canDecideTimeout, decisionBlocked, chooseTimeout, name, mood, move, prepare, deploy, start, undo, finish, home, rematch };
 }

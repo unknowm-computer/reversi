@@ -18,6 +18,7 @@ const reason = computed<string>(() => {
       : '양쪽 모두 금수로 놓을 곳이 없어 무승부예요';
   }
   return ({
+    fleetSunk: '상대 함대 다섯 척을 모두 격침했어요',
     noLegalMoves: '모든 수를 마쳤어요', fiveInRow: '다섯 돌을 이어 승리했어요', boardFull: '빈 교차점 없이 판을 채웠어요',
     resign: '기권으로 대국이 끝났어요', timeout: '제한 시간이 다 되었어요', disconnect: '상대의 연결이 종료되었어요',
     checkmate: props.game.gameType === 'chess' ? '체크메이트! 킹이 피할 곳이 없어요' : '외통장군! 궁을 지킬 수 없어요',

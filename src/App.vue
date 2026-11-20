@@ -9,6 +9,10 @@ import VictoryScene from './components/game/VictoryScene.vue';
 import MoveImpact from './components/game/MoveImpact.vue';
 import TimeoutChoiceScene from './components/game/TimeoutChoiceScene.vue';
 import TimeoutPenalty from './components/game/TimeoutPenalty.vue';
+import FleetPlacement from './components/game/FleetPlacement.vue';
+import { useBattleshipShots } from './composables/useBattleshipShots';
+import FleetMap from './components/game/FleetMap.vue';
+import BattleshipBoard from './components/game/BattleshipBoard.vue';
 import GameBoard from './components/game/GameBoard.vue';
 import GomokuBoard from './components/game/GomokuBoard.vue';
 import PieceBoard from './components/game/PieceBoard.vue';
@@ -49,6 +53,21 @@ const onlineRematchSetup = computed(() => {
   if (!room?.rematchSetup) return undefined;
   return { phase: room.rematchSetup, host: online.color.value === 'black', ready: Boolean(room.players.find(player => player.color === online.color.value)?.ready) };
 });
+const deploying = computed(() => screen.value === 'deploying');
+const fleetReady = computed(() => Boolean(online.room.value?.players.find(player => player.color === online.color.value)?.ready));
+function confirmFleet(fleet: number[][]): void {
+  if (!deploying.value) return;
+  if (store.settings.mode === 'online') online.ready(fleet);
+  else game.start(store.settings, fleet);
+}
+const { active: shotEffects, surfacing } = useBattleshipShots(() => store.state, outcome => {
+  audio.sfx(outcome === 'miss' ? 'splash' : 'shipHit');
+  if (outcome === 'sunk') audio.sfx('laugh');
+});
+const finalShotPlaying = computed(() => {
+  const result = store.state.result;
+  return result?.reason === 'fleetSunk' && result.winner !== null && surfacing.value[result.winner].length > 0;
+});
 const victoryPlayed = ref(false);
 const victoryPending = computed(() => screen.value === 'game' && Boolean(store.state.result?.winner) && !victoryPlayed.value);
 watch(() => `${store.state.gameId}:${Boolean(store.state.result)}`, () => { victoryPlayed.value = false; }, { flush: 'sync' });
@@ -69,9 +88,10 @@ function confirmSetup(settings: GameSettings): void {
     if (onlineRematchSetup.value.phase === 'editing') online.configureRematch(settings);
     else online.ready();
   } else if (settings.mode === 'online') void online.enter('create', settings);
+  else if (settings.gameType === 'battleship') game.deploy(settings);
   else game.start(settings);
 }
-function requestHome(): void { if ((screen.value === 'game' && !store.state.result) || screen.value === 'lobby') modal.value = 'home'; else void game.home(); }
+function requestHome(): void { if ((screen.value === 'game' && !store.state.result) || (screen.value === 'lobby' || deploying.value)) modal.value = 'home'; else void game.home(); }
 function canUndoFor(color: Color): boolean {
   return showActions(color) && store.canUndoFor(color) && !game.timeoutPending.value && !(isLocal.value && game.penalty.recipient.value);
 }
@@ -92,9 +112,9 @@ function confirm(): void {
 }
 </script>
 <template>
-  <div class="app-shell" :class="{ 'is-playing': screen === 'game' || screen === 'preparing' }" @pointerdown.once="audio.unlock()" @keydown.once="audio.unlock()">
+  <div class="app-shell" :class="{ 'is-playing': screen === 'game' || screen === 'preparing' || deploying }" @pointerdown.once="audio.unlock()" @keydown.once="audio.unlock()">
     <AppHeader
-      :compact="screen === 'game' || screen === 'preparing'"
+      :compact="screen === 'game' || screen === 'preparing' || deploying"
       :show-home="screen !== 'setup'"
       :show-rematch="screen === 'game' && Boolean(store.state.result)"
       :rematch-requested="rematchRequested"
@@ -124,11 +144,12 @@ function confirm(): void {
         :busy="online.busy.value"
         :connected="online.connected.value"
         :error="online.error.value"
+        @deploy="game.deploy(online.room.value!.settings)"
         @ready="online.ready"
         @character="online.chooseCharacter"
         @leave="requestHome"
       />
-      <section v-else-if="screen === 'game' || screen === 'preparing'" class="game-layout" :class="{ 'is-janggi': activeGameType === 'janggi' }">
+      <section v-else-if="screen === 'game' || screen === 'preparing' || deploying" class="game-layout" :class="{ 'is-janggi': activeGameType === 'janggi' }">
         <div class="play-area">
           <h1 class="sr-only">{{ gameName(activeGameType) }} · {{ modeName }}</h1>
           <PlayerPanel
@@ -141,8 +162,13 @@ function confirm(): void {
           <p class="sr-only" role="status" aria-live="polite">{{ status }}</p>
           <p v-if="game.connectionNotice.value" class="connection-notice" role="alert">{{ game.connectionNotice.value }}</p>
           <div class="board-stage">
+            <FleetPlacement v-if="deploying" :waiting="fleetReady"
+              :disabled="store.settings.mode === 'online' && (online.busy.value || !online.connected.value)" @confirm="confirmFleet" />
+            <BattleshipBoard v-else-if="activeGameType === 'battleship' && store.state.battleship" :state="store.state"
+              :perspective="myColor" :shot-index="shotEffects[myColor]" :surfacing="surfacing[myColor]" :interactive="canMove && !modal && !resultVisible"
+              :hint-index="game.hint.index.value" @move="game.move" />
             <PieceBoard
-              v-if="isPieceGame(activeGameType)"
+              v-else-if="isPieceGame(activeGameType)"
               :state="store.state"
               :legal="available"
               :interactive="canMove && !modal && !resultVisible"
@@ -207,8 +233,13 @@ function confirm(): void {
           :room-code="store.settings.mode === 'online' ? online.room.value?.code ?? null : null"
           :seconds="store.settings.seconds"
         >
+          <template v-if="store.state.battleship && !deploying" #fleet>
+            <FleetMap :shot-index="shotEffects[top]" :surfacing="surfacing[top]" :ships="store.state.battleship.fleets[myColor]" :incoming="store.state.battleship.shots[top]" />
+          </template>
           <PieceMatchSidebar v-if="isPieceGame(activeGameType)" :state="store.state" />
           <GomokuMatchSidebar v-else-if="activeGameType === 'gomoku'" :move-count="moveCount" :turn="store.state.turn" :result="store.state.result" />
+          <p v-else-if="deploying" class="fleet-note">다섯 척을 배치하고 확정하면 대국을 시작해요.</p>
+          <p v-else-if="activeGameType === 'battleship'" class="fleet-note">상대 해역에서 아직 쏘지 않은 칸을 고르세요. 길이가 5·4·3·3·2칸인 함선 다섯 척을 모두 격침하면 승리해요.</p>
           <ReversiMatchSidebar v-else :counts="store.counts" />
         </MatchDetails>
       </section>
@@ -218,7 +249,7 @@ function confirm(): void {
       <span class="footer-mark"><AppIcon name="leaf" />MADE FOR A LITTLE BREAK</span>
     </footer>
     <VictoryScene
-      v-if="victoryPending && !game.impact.busy.value && !modal"
+      v-if="victoryPending && !game.impact.busy.value && !finalShotPlaying && !modal"
       :winner="character(store.state.result!.winner!)"
       @done="victoryPlayed = true"
       @hit="audio.sfx('bonk')"
@@ -309,6 +340,7 @@ function confirm(): void {
 .game-layout.is-janggi { --board-size: clamp(440px, calc((100dvh - 400px) * .9), 720px); }
 .board-stage { position: relative; isolation: isolate; margin-block: var(--space-2) var(--space-3); }
 .connection-notice { margin-top: var(--space-3); font-size: var(--text-small); color: var(--danger); }
+.fleet-note { color: var(--muted); font-size: var(--text-small); }
 .play-area { min-width: 0; }
 .game-controls { display: flex; justify-content: space-between; align-items: center; margin-top: 15px; }
 .game-controls svg { width: 15px; }

@@ -1,5 +1,5 @@
 import { onUnmounted, ref } from 'vue';
-type Scene = 'lobby' | 'game' | 'late' | 'off';
+type Scene = 'lobby' | 'game' | 'battleship' | 'late' | 'off';
 export function useGameAudio() {
   const enabled = ref(true);
   try { enabled.value = localStorage.getItem('reversi-sound') !== 'off'; } catch { /* Optional preference storage. */ }
@@ -7,10 +7,14 @@ export function useGameAudio() {
   let master: GainNode | null = null, music: GainNode | null = null;
   let scene: Scene = 'lobby', sequence = 0, nextNote = 0;
   const voices = new Set<OscillatorNode>();
-  function tone(frequency: number, start: number, duration: number, volume: number, target: AudioNode, shape: OscillatorType = 'sine'): void {
+  function tone(frequency: number, start: number, duration: number, volume: number, target: AudioNode, shape: OscillatorType = 'sine', endFrequency?: number): void {
     if (!context) return;
     const osc = context.createOscillator(), gain = context.createGain();
     osc.type = shape; osc.frequency.value = frequency;
+    if (endFrequency !== undefined) {
+      osc.frequency.setValueAtTime(frequency, start);
+      osc.frequency.exponentialRampToValueAtTime(endFrequency, start + duration);
+    }
     gain.gain.setValueAtTime(0, start); gain.gain.linearRampToValueAtTime(volume, start + 0.012);
     gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
     osc.connect(gain).connect(target); osc.start(start); osc.stop(start + duration + 0.03);
@@ -56,8 +60,21 @@ export function useGameAudio() {
       if (context.state === 'suspended') await context.resume();
     } catch { /* Sound must never block gameplay when the browser denies audio. */ }
   }
-  function sfx(kind: 'move' | 'pass' | 'reverse' | 'capture' | 'undo' | 'end' | 'tick' | 'urgent' | 'countdown' | 'timeout' | 'button' | 'bonk' | 'taunt' | 'laugh' | 'whistle', count = 0): void {
+  function sfx(kind: 'move' | 'pass' | 'reverse' | 'capture' | 'undo' | 'end' | 'tick' | 'urgent' | 'countdown' | 'timeout' | 'button' | 'bonk' | 'taunt' | 'laugh' | 'whistle' | 'shipHit' | 'splash', count = 0): void {
     if (!enabled.value || !context || !master || context.state !== 'running' || document.hidden) return;
+    if (kind === 'shipHit') {
+      const now = context.currentTime;
+      const pitch = .94 + Math.random() * .12;
+      tone(175 * pitch, now, .19, .23, master, 'triangle', 55);
+      tone(840 * pitch, now, .085, .085, master, 'square', 320 * pitch);
+      tone(1240 * pitch, now + .018, .15, .06, master, 'sine', 950 * pitch);
+      return;
+    }
+    if (kind === 'splash') {
+      tone(390, context.currentTime, .09, .10, master, 'sine', 155);
+      tone(680, context.currentTime + .055, .075, .055, master, 'sine', 410);
+      return;
+    }
     if (kind === 'timeout') {
       tone(1320, context.currentTime, .22, .12, master, 'square');
       return;
@@ -95,11 +112,36 @@ export function useGameAudio() {
     phrases[kind].forEach((note, index) => tone(note, context!.currentTime + index * 0.09, kind === 'end' ? 0.5 : 0.12, kind === 'tick' ? 0.035 : 0.13, master!));
     for (let i = 0; i < Math.min(count, 8); i++) tone(440 + i * 35, context.currentTime + 0.06 + i * 0.035, 0.07, 0.045, master, 'triangle');
   }
+  // Eight bars in D minor. The rests leave space for the shot and splash sounds.
+  const seaBass = [73.42, 73.42, 58.27, 65.41, 73.42, 87.31, 65.41, 55];
+  const seaMelody = [
+    [5, 8, 12], [7, 3, 0], [7, 12, 14], [7, 10, 7],
+    [5, 12, 15], [4, 7, 12], [7, 5, 2], [7, 10, 5],
+  ];
+  function playSeaStep(step: number, start: number, bus: GainNode): void {
+    const bar = Math.floor(step / 8) % seaBass.length;
+    const beat = step % 8;
+    const root = seaBass[bar];
+    if (beat === 0 || beat === 4) {
+      tone(root, start, beat === 0 ? 1.12 : .72, .18, bus, 'triangle');
+      tone(root * 1.5, start + .04, .9, .055, bus);
+    }
+    const note = [1, 3, 6].indexOf(beat);
+    if (note < 0) return;
+    const pitch = root * 4 * 2 ** (seaMelody[bar][note] / 12);
+    tone(pitch, start, .48, .11, bus);
+    tone(pitch, start + .26, .52, .036, bus);
+  }
   const interval = window.setInterval(() => {
     if (!context || !music || !enabled.value || document.hidden || scene === 'off' || context.state !== 'running') return;
     const step = scene === 'late' ? 0.19 : scene === 'lobby' ? 0.31 : 0.38;
     if (nextNote < context.currentTime) nextNote = context.currentTime + 0.02;
     while (nextNote < context.currentTime + 0.12) {
+      if (scene === 'battleship') {
+        playSeaStep(sequence++, nextNote, music);
+        nextNote += 30 / 78;
+        continue;
+      }
       const melody = scene === 'lobby' ? [0, 4, 7, 11, 9, 7, 4, 2, 0, 4, 9, 7, 4, 2, -3, 2] : [0, 7, 12, 4, 2, 9, 14, 7, -3, 4, 9, 12, -5, 2, 7, 11];
       tone(261.63 * 2 ** (melody[sequence % melody.length] / 12), nextNote, step * 1.6, 0.13, music, 'triangle');
       if (sequence % 4 === 0) tone(130.81 * 2 ** ([0, 2, -3, -5][Math.floor(sequence / 4) % 4] / 12), nextNote, step * 3, 0.14, music);

@@ -2,7 +2,7 @@ export type Color = 'black' | 'white';
 export type Cell = Color | null;
 export type Character = 'jannabi' | 'grasshopper';
 export type Mode = 'ai' | 'local' | 'online';
-export type GameType = 'reversi' | 'gomoku' | 'chess' | 'janggi';
+export type GameType = 'reversi' | 'gomoku' | 'chess' | 'janggi' | 'battleship';
 export type PieceKind = 'king' | 'queen' | 'rook' | 'bishop' | 'knight' | 'pawn' | 'general' | 'guard' | 'elephant' | 'horse' | 'cannon' | 'soldier';
 export interface Piece { color: Color; kind: PieceKind }
 export type JanggiFormation = 'outer' | 'inner' | 'left' | 'right';
@@ -30,7 +30,13 @@ export interface GameSettings {
 export interface Score { black: number; white: number; empty: number }
 export interface GameResult {
   winner: Color | null;
-  reason: 'noLegalMoves' | 'fiveInRow' | 'boardFull' | 'resign' | 'timeout' | 'disconnect' | 'checkmate' | 'stalemate' | 'repetition' | 'fiftyMoves' | 'insufficientMaterial' | 'bikjang' | 'mutualPass';
+  reason: 'noLegalMoves' | 'fiveInRow' | 'boardFull' | 'resign' | 'timeout' | 'disconnect' | 'checkmate' | 'stalemate' | 'repetition' | 'fiftyMoves' | 'insufficientMaterial' | 'bikjang' | 'mutualPass' | 'fleetSunk';
+}
+export type Shot = 'hit' | 'miss' | 'sunk' | null;
+export interface BattleshipPosition {
+  sunkSubmarines?: Partial<Record<Color, number>>;
+  fleets: Record<Color, number[][]>;
+  shots: Record<Color, Shot[]>;
 }
 export interface GameState {
   gameType: GameType;
@@ -49,6 +55,7 @@ export interface GameState {
   pieces?: (Piece | null)[];
   lastFrom?: number | null;
   check?: Color | null;
+  battleship?: BattleshipPosition;
   chess?: ChessPosition;
   janggi?: JanggiPosition;
 }
@@ -59,10 +66,10 @@ export const JANGGI_FORMATIONS: ReadonlyArray<{ value: JanggiFormation; label: s
   { value: 'outer', label: '바깥마 · 마상상마' }, { value: 'inner', label: '안쪽마 · 상마마상' },
   { value: 'left', label: '왼마 · 마상마상' }, { value: 'right', label: '오른마 · 상마상마' },
 ];
-export const gameName = (gameType: GameType = 'reversi'): string => ({ reversi: '리버시', gomoku: '오목', chess: '체스', janggi: '장기' })[gameType];
+export const gameName = (gameType: GameType = 'reversi'): string => ({ reversi: '리버시', gomoku: '오목', chess: '체스', janggi: '장기', battleship: '배틀쉽' })[gameType];
 export const isPieceGame = (gameType: GameType): boolean => gameType === 'chess' || gameType === 'janggi';
 /** Internal black/white identify first/second player; chess starts with white. */
-export const sideName = (gameType: GameType, color: Color): string => gameType === 'chess' ? (color === 'black' ? '백' : '흑') : gameType === 'janggi' ? (color === 'black' ? '초' : '한') : (color === 'black' ? '흑' : '백');
+export const sideName = (gameType: GameType, color: Color): string => gameType === 'battleship' ? (color === 'black' ? '제1함대' : '제2함대') : gameType === 'chess' ? (color === 'black' ? '백' : '흑') : gameType === 'janggi' ? (color === 'black' ? '초' : '한') : (color === 'black' ? '흑' : '백');
 export const characterName = (character: Character): string => character === 'jannabi' ? '잔나비' : '베짱이';
 export const otherCharacter = (character: Character): Character => character === 'jannabi' ? 'grasshopper' : 'jannabi';
 export const colorName = (color: Color): string => color === 'black' ? '흑' : '백';

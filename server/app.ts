@@ -5,10 +5,11 @@ import { randomInt, randomUUID } from 'node:crypto';
 import { Server, type Socket } from 'socket.io';
 import { commandSchema, type ClientEvents, type ServerEvents, type RoomSnapshot, type CommandResponse, type TimeoutState, type RematchSetup } from '../shared/protocol.js';
 import { applyMove, validMoveCode, initialState } from '../shared/game/engine.js';
+import { playerView } from '../shared/games/battleship/rules.js';
 import { endGame } from '../shared/game/state.js';
 import type { Color, GameSettings, GameState } from '../shared/game/types.js';
 import { otherCharacter, TIMEOUT_PENALTY_MS } from '../shared/game/types.js';
-interface Player { color: Color; token: string; socketId: string | null; disconnectedAt: number | null; ready: boolean; rematch: boolean }
+interface Player { fleet?: number[][]; color: Color; token: string; socketId: string | null; disconnectedAt: number | null; ready: boolean; rematch: boolean }
 interface Room { timeout: TimeoutState | null; rematchSetup: RematchSetup | null; code: string; settings: GameSettings; players: Player[]; game: GameState | null; deadline: number | null; updatedAt: number; revision: number; requests: Map<string, CommandResponse> }
 interface SocketData { code?: string; token?: string; windowStart?: number; count?: number }
 type GameSocket = Socket<ClientEvents, ServerEvents, Record<string, never>, SocketData>;
@@ -33,14 +34,23 @@ export function createGameServer(options: ServerOptions = {}): { http: HttpServe
     } catch { res.writeHead(404); res.end('Run npm run build first, or open the Vite dev server.'); }
   });
   const io = new Server<ClientEvents, ServerEvents, Record<string, never>, SocketData>(http, { maxHttpBufferSize: 8192 });
-  function snapshot(room: Room): RoomSnapshot {
-    return { timeout: room.timeout, rematchSetup: room.rematchSetup, code: room.code, settings: room.settings, players: room.players.map(({ color, socketId, ready, rematch }) => ({ color, connected: socketId !== null, ready, rematch })), game: room.game, deadline: room.deadline, serverNow: nowMillis(), revision: room.revision };
+  function snapshot(room: Room, viewer: Color): RoomSnapshot {
+    return { timeout: room.timeout, rematchSetup: room.rematchSetup, code: room.code, settings: room.settings, players: room.players.map(({ color, socketId, ready, rematch }) => ({ color, connected: socketId !== null, ready, rematch })), game: room.game && playerView(room.game, viewer), deadline: room.deadline, serverNow: nowMillis(), revision: room.revision };
   }
-  function publish(room: Room): void { room.revision++; io.to(room.code).emit('room:state', snapshot(room)); }
+  function publish(room: Room): void {
+    room.revision++;
+    for (const player of room.players) {
+      if (player.socketId) io.to(player.socketId).emit('room:state', snapshot(room, player.color));
+    }
+  }
   function start(room: Room): void {
     room.timeout = null;
     room.rematchSetup = null;
     room.game = initialState(randomUUID(), room.settings.gameType, room.settings);
+    for (const player of room.players) {
+      if (room.game.battleship && player.fleet) room.game.battleship.fleets[player.color] = player.fleet;
+      delete player.fleet;
+    }
     room.deadline = room.settings.seconds ? nowMillis() + room.settings.seconds * 1000 : null;
     for (const player of room.players) player.rematch = false;
     room.requests.clear();
@@ -130,7 +140,7 @@ export function createGameServer(options: ServerOptions = {}): { http: HttpServe
         }
         room.updatedAt = now; socket.data.code = room.code; socket.data.token = player.token;
         void socket.join(room.code); publish(room);
-        ack({ ok: true, token: player.token, color: player.color, room: snapshot(room) }); return;
+        ack({ ok: true, token: player.token, color: player.color, room: snapshot(room, player.color) }); return;
       }
       const room = socket.data.code ? rooms.get(socket.data.code) : undefined;
       const player = room?.players.find(p => p.token === socket.data.token && p.socketId === socket.id);
@@ -139,7 +149,7 @@ export function createGameServer(options: ServerOptions = {}): { http: HttpServe
       if (!rooms.has(room.code)) { reject('ROOM_EXPIRED', '만료된 방입니다.'); return; }
       const key = `${player.token}:${command.requestId}`;
       const previous = room.requests.get(key);
-      if (previous) { ack({ ...previous, room: snapshot(room) }); return; }
+      if (previous) { ack({ ...previous, room: snapshot(room, player.color) }); return; }
       if (command.type === 'leave') { removeRoom(room, '플레이어가 방을 나갔습니다.'); ack({ ok: true }); return; }
       if (command.type === 'character') {
         if (room.game || room.rematchSetup || room.players.some(p => p.ready)) { reject('SETTINGS_LOCKED', '준비 완료 전까지만 캐릭터를 바꿀 수 있어요.'); return; }
@@ -147,7 +157,7 @@ export function createGameServer(options: ServerOptions = {}): { http: HttpServe
       } else if (command.type === 'configure-rematch') {
         if (player.color !== 'black') { reject('NOT_HOST', '방장만 재대국 설정을 바꿀 수 있어요.'); return; }
         if (room.revision !== command.expectedRoomRevision) {
-          ack({ ok: false, errorCode: 'STALE_ROOM', error: '최신 방 상태를 반영했습니다. 설정을 확인하고 다시 시도해 주세요.', room: snapshot(room) }); return;
+          ack({ ok: false, errorCode: 'STALE_ROOM', error: '최신 방 상태를 반영했습니다. 설정을 확인하고 다시 시도해 주세요.', room: snapshot(room, player.color) }); return;
         }
         if (room.game || room.rematchSetup !== 'editing') { reject('SETTINGS_LOCKED', '재대국 설정 중에만 바꿀 수 있어요.'); return; }
         if (command.settings.blackCharacter !== room.settings.blackCharacter) {
@@ -155,15 +165,17 @@ export function createGameServer(options: ServerOptions = {}): { http: HttpServe
         }
         room.settings = command.settings;
         room.rematchSetup = 'ready';
-        for (const participant of room.players) participant.ready = participant.color === 'black';
+        for (const participant of room.players) participant.ready = room.settings.gameType !== 'battleship' && participant.color === 'black';
       } else if (command.type === 'ready') {
         if (room.game) { reject('ALREADY_STARTED', '이미 시작한 대국입니다.'); return; }
         if (room.rematchSetup === 'editing') { reject('SETTINGS_PENDING', '방장이 재대국 설정을 마치면 준비할 수 있어요.'); return; }
+        if (command.fleet && room.settings.gameType !== 'battleship') { reject('INVALID_SETTINGS', '배틀쉽에서만 함대를 배치할 수 있어요.'); return; }
+        if (!player.ready) player.fleet = command.fleet;
         player.ready = true;
         if (room.players.length === 2 && room.players.every(p => p.ready && p.socketId)) start(room);
       } else {
         if (!room.game || room.game.gameId !== command.gameId || room.game.revision !== command.expectedRevision) {
-          ack({ ok: false, errorCode: 'STALE_STATE', error: '최신 대국 상태를 반영했습니다. 다시 시도해 주세요.', room: snapshot(room) }); return;
+          ack({ ok: false, errorCode: 'STALE_STATE', error: '최신 대국 상태를 반영했습니다. 다시 시도해 주세요.', room: snapshot(room, player.color) }); return;
         }
         if (command.type === 'timeout-choice') {
           if (room.game.result || room.timeout?.phase !== 'decision') { reject('NO_TIMEOUT_DECISION', '선택할 시간 초과가 없습니다.'); return; }
@@ -200,7 +212,7 @@ export function createGameServer(options: ServerOptions = {}): { http: HttpServe
         }
       }
       room.updatedAt = now; publish(room);
-      const response: CommandResponse = { ok: true, room: snapshot(room) };
+      const response: CommandResponse = { ok: true, room: snapshot(room, player.color) };
       room.requests.set(key, response);
       if (room.requests.size > 256) room.requests.delete(room.requests.keys().next().value!);
       ack(response);

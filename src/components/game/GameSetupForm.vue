@@ -55,6 +55,7 @@ const confirmLabel = computed<string>(() => {
     if (props.onlineRematch.phase === 'ready') return '이 설정으로 준비 완료';
     return props.onlineRematch.host ? '설정 확정하기' : '방장이 설정하는 중…';
   }
+  if (!props.busy && config.mode === 'ai' && config.gameType === 'battleship') return '보드에서 함대 배치';
   return props.busy ? (config.mode === 'online' ? '방 만드는 중…' : '대국 준비 중…')
     : (config.mode === 'online' ? '친구랑 놀 방 만들기' : '좋아, 시작하자!');
 });
@@ -68,7 +69,8 @@ const rematchNotice = computed<string>(() => {
 const confirmAccessibleLabel = computed<string>(() => props.busy || config.mode === 'online' ? confirmLabel.value : `${confirmLabel.value} 대국 시작`);
 
 function confirm(): void {
-  if (!unavailable.value) emit('confirm', { ...config });
+  if (unavailable.value) return;
+  emit('confirm', { ...config });
 }
 </script>
 
@@ -78,7 +80,7 @@ function confirm(): void {
     <p v-if="rematchNotice" class="connection-status" role="status">{{ rematchNotice }}</p>
     <fieldset v-if="allowSelection" :disabled="busy || readOnly" class="game-selection">
       <legend>이번 판의 게임</legend>
-      <GameTypePicker v-model="config.gameType" compact />
+      <GameTypePicker :mode="config.mode" v-model="config.gameType" compact />
     </fieldset>
     <fieldset :disabled="busy || readOnly" class="player-settings">
       <legend class="sr-only">이번 판의 플레이어</legend>
