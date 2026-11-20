@@ -52,6 +52,21 @@ onUnmounted(() => previous?.focus());
   width: min(480px, calc(100% - 32px));
   max-height: calc(100dvh - 40px);
   box-shadow: 0 24px 100px #142e3533;
+
+  &::-webkit-scrollbar {
+    background-color: transparent;
+    border-radius: 24px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: #aaa;
+    border-radius: 24px;
+    border: 4px solid transparent;
+    background-clip: content-box;
+  }
+  &::-webkit-scrollbar-track {
+    background-color: transparent;
+    margin: 6px;
+  }
 }
 .modal--wide {
   width: min(720px, calc(100% - 32px));

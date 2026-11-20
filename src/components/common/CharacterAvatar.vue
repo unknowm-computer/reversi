@@ -6,6 +6,8 @@ import CharacterArt from '../game/CharacterArt.vue';
 interface Props {
   character: Character;
   mood?: Reaction;
+  still?: boolean;
+  toast?: boolean;
 }
 withDefaults(defineProps<Props>(), { mood: 'idle' });
 const portraitClipId = useId();
@@ -23,7 +25,7 @@ const portraitClipId = useId();
       </defs>
     </svg>
     <div class="avatar-crop" :class="{ 'with-antennae': character === 'grasshopper' }" :style="character === 'grasshopper' ? { clipPath: `url(#${portraitClipId})` } : undefined">
-      <CharacterArt :character="character" :mood="mood" portrait />
+      <CharacterArt :character="character" :mood="mood" :still="still" :toast="toast" portrait />
     </div>
     <slot />
   </div>
@@ -31,7 +33,7 @@ const portraitClipId = useId();
 
 <style scoped lang="scss">
 .character-avatar { position: relative; width: 100%; height: 100%; }
-.avatar-crop { width: 100%; height: 100%; background: #e9e9dc; border-radius: 50%; overflow: hidden; }
+.avatar-crop { width: 100%; height: 100%; background: var(--avatar-background, #e9e9dc); border-radius: 50%; overflow: hidden; }
 .portrait-clip { position: absolute; }
 .avatar-crop.with-antennae { overflow: visible; }
 </style>

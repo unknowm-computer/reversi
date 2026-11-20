@@ -127,7 +127,14 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
       </template>
       <CharacterTaunt v-if="taunt" :character="character" />
     </g>
-    <g v-if="['happy','dance','win'].includes(mood)" fill="#c99a47" class="sparkles"><path d="m27 43 3 8 8 3-8 3-3 8-3-8-8-3 8-3Zm161 14 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z"/></g>
+    <g v-if="['happy','dance','win'].includes(mood)" fill="#c99a47" class="sparkles">
+      <g :transform="portrait && still && character === 'jannabi' && mood === 'win' ? 'translate(61 26)' : 'translate(27 43)'">
+        <path d="m0 0 3 8 8 3-8 3-3 8-3-8-8-3 8-3Z" />
+      </g>
+      <g :transform="portrait && still && character === 'jannabi' && mood === 'win' ? 'translate(159 30)' : 'translate(188 57)'">
+        <path d="m0 0 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z" />
+      </g>
+    </g>
     <g v-if="['urgent','sad'].includes(mood)" fill="#83b5bd"><path d="M177 66q-15 20 0 21 14-1 0-21"/><path d="M42 96q-10 15 0 16 10-1 0-16"/></g>
     <text v-if="mood === 'think'" x="180" y="42" fill="#738262" font-size="32" font-family="serif">?</text>
     <text v-if="mood === 'undo'" x="176" y="45" fill="#a97a45" font-size="22">…</text>
