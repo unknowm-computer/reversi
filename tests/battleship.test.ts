@@ -26,6 +26,9 @@ it('creates straight fleets, resolves hits and sinks, and ends on the last ship'
   }
   expect(state.result).toEqual({ winner: 'black', reason: 'fleetSunk' });
   expect(legalMoves(state)).toEqual([]);
+  for (const viewer of ['black', 'white'] as const) {
+    expect(playerView(state, viewer).battleship!.fleets).toEqual(state.battleship!.fleets);
+  }
 });
 
 

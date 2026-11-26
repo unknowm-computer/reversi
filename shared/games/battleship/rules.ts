@@ -74,7 +74,7 @@ export function sunkShips(sea: BattleshipPosition, attacker: Color): number[][] 
 
 export function playerView(state: GameState, viewer: Color): GameState {
   const sea = state.battleship;
-  if (!sea) return state;
+  if (!sea || state.result) return state;
   return { ...state, battleship: { ...sea, fleets: { ...sea.fleets, [opposite(viewer)]: sunkShips(sea, viewer) } } };
 }
 
