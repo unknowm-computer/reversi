@@ -5,6 +5,7 @@ import { gameName, sideName } from '../../../shared/game/types';
 import { decodePieceMove, JANGGI_PASS, pieceName, type PieceMove } from '../../../shared/game/pieces';
 import { useGamepad } from '../../composables/useGamepad';
 import { usePieceBoardFeedback } from '../../composables/usePieceBoardFeedback';
+import { turns, step } from '../../../shared/games/checkers/rules';
 import AppIcon from '../common/AppIcon.vue';
 import PieceArt from './PieceArt.vue';
 import PieceHintArrow from './PieceHintArrow.vue';
@@ -28,7 +29,25 @@ const { captureCell, checkCell } = usePieceBoardFeedback(() => props.state);
 const cells = computed<number[]>(() => Array.from({ length: total.value }, (_, index) => reversed.value ? total.value - 1 - index : index));
 const fileLabels = computed<string[]>(() => Array.from({ length: columns.value }, (_, index) => String.fromCharCode(65 + (reversed.value ? columns.value - 1 - index : index))));
 const rankLabels = computed<number[]>(() => Array.from({ length: rows.value }, (_, index) => reversed.value ? index + 1 : rows.value - index));
+// Preview intermediate landings locally. Only a completed route becomes a game move.
+const jumpPath = ref<number[]>([]);
+const checkerTurns = computed(() => props.state.gameType === 'checkers' && props.state.pieces
+  ? turns(props.state.pieces, props.state.turn) : []);
+const previewPieces = computed(() => {
+  let pieces = props.state.pieces;
+  if (pieces) {
+    for (let i = 1; i < jumpPath.value.length; i++) pieces = step(pieces, jumpPath.value[i - 1], jumpPath.value[i]);
+  }
+  return pieces;
+});
 const moves = computed<BoardMove[]>(() => props.legal.flatMap(code => {
+  if (props.state.gameType === 'checkers') {
+    const path = checkerTurns.value[code]?.path;
+    const prefix = jumpPath.value;
+    if (!path || !prefix.every((square, i) => path[i] === square)) return [];
+    const i = Math.max(0, prefix.length - 1);
+    return [{ code, from: path[i], to: path[i + 1], promotion: 'queen' as const }];
+  }
   const move = decodePieceMove(code);
   return move && move.from < total.value && move.to < total.value ? [{ ...move, code }] : [];
 }));
@@ -36,13 +55,13 @@ const sources = computed<Set<number>>(() => new Set(moves.value.map(move => move
 const destinations = computed<Set<number>>(() => new Set(moves.value.filter(move => move.from === selected.value).map(move => move.to)));
 const suggestion = computed<BoardMove | null>(() => moves.value.find(move => move.code === props.hintIndex) ?? null);
 const suggestedPiece = computed<Piece | null>(() => suggestion.value ? pieceAt(suggestion.value.from) : null);
-const suggestedPromotion = computed<string>(() => suggestion.value && suggestedPiece.value?.kind === 'pawn'
+const suggestedPromotion = computed<string>(() => props.state.gameType === 'chess' && suggestion.value && suggestedPiece.value?.kind === 'pawn'
   && [0, rows.value - 1].includes(Math.floor(suggestion.value.to / columns.value)) ? pieceName(suggestion.value.promotion) : '');
 const hintMessage = computed<string>(() => suggestion.value && suggestedPiece.value
   ? `힌트: 1번 ${coordinate(suggestion.value.from)}의 말(${displayedPieceName(suggestedPiece.value)})을 선택한 뒤, 2번 ${coordinate(suggestion.value.to)}로 이동해 보세요.${suggestedPromotion.value ? ` ${suggestedPromotion.value} 승격을 선택하세요.` : ''}`
   : props.hintIndex === JANGGI_PASS && props.legal.includes(JANGGI_PASS) ? '힌트: 이번 수는 쉬어 보세요.' : '');
 
-function pieceAt(index: number): Piece | null { return props.state.pieces?.[index] ?? null; }
+function pieceAt(index: number): Piece | null { return previewPieces.value?.[index] ?? null; }
 function coordinate(index: number): string { return `${String.fromCharCode(65 + index % columns.value)}${rows.value - Math.floor(index / columns.value)}`; }
 function checked(index: number): boolean {
   const piece = pieceAt(index);
@@ -55,6 +74,7 @@ function subdued(index: number): boolean {
 function canSelect(index: number): boolean { return enabled.value && pieceAt(index)?.color === props.state.turn && sources.value.has(index); }
 function canActivate(index: number): boolean { return enabled.value && !promotionOptions.value.length && (canSelect(index) || destinations.value.has(index)); }
 function displayedPieceName(piece: Piece): string {
+  if (props.state.gameType === 'checkers') return piece.kind === 'king' ? '킹' : '일반 말';
   if (props.state.gameType === 'janggi') {
     if (piece.kind === 'rook') return '차';
     if (piece.kind === 'soldier') return piece.color === 'black' ? '졸' : '병';
@@ -66,7 +86,7 @@ function label(index: number): string {
   const content = piece ? `${sideName(props.state.gameType, piece.color)} ${displayedPieceName(piece)}` : '빈칸';
   return `${coordinate(index)}, ${content}${selected.value === index ? ', 선택됨' : canSelect(index) ? ', 선택 가능' : ''}${enabled.value && destinations.value.has(index) ? ', 이동 가능' : ''}${checked(index) ? props.state.gameType === 'janggi' ? ', 장군' : ', 체크' : ''}${props.state.lastFrom === index ? ', 마지막 이동 출발' : ''}${props.state.lastMove === index ? ', 마지막 이동 도착' : ''}${suggestion.value?.from === index ? ', 힌트 출발' : suggestion.value?.to === index ? ', 힌트 도착' : ''}`;
 }
-function clearSelection(): void { selected.value = null; promotionOptions.value = []; promotionIndex.value = 0; }
+function clearSelection(): void { selected.value = null; jumpPath.value = []; promotionOptions.value = []; promotionIndex.value = 0; }
 function send(move: BoardMove): void {
   if (enabled.value && props.legal.includes(move.code)) {
     const restoreFocus = promotionOptions.value.length > 0;
@@ -81,6 +101,17 @@ function choose(index: number): void {
   if (selected.value === index) { clearSelection(); return; }
   if (canSelect(index)) { selected.value = index; return; }
   const options = moves.value.filter(move => move.from === selected.value && move.to === index);
+  if (props.state.gameType === 'checkers' && options.length) {
+    const move = options[0];
+    const prefix = jumpPath.value.length ? [...jumpPath.value, index] : [move.from, index];
+    if (checkerTurns.value[move.code].path.length === prefix.length) send(move);
+    else {
+      jumpPath.value = prefix;
+      selected.value = index;
+      focusIndex.value = index;
+    }
+    return;
+  }
   if (options.length === 1) send(options[0]);
   else if (options.length > 1) {
     promotionOptions.value = options;
@@ -178,7 +209,8 @@ const pad = useGamepad(enabled, {
         <AppIcon name="arrow" />
         <span class="hint-step target">2</span><strong>{{ coordinate(suggestion.to) }}{{ suggestedPromotion ? ` · ${suggestedPromotion} 승격` : '' }}</strong>
       </div>
-      <div v-else class="board-label" aria-hidden="true">JANNABI & GRASSHOPPER · {{ state.gameType === 'janggi' ? 'JANGGI' : 'CHESS' }} CLUB</div>
+      <div v-else-if="jumpPath.length" class="board-label" role="status">같은 말로 다음 점프 칸을 선택하세요</div>
+      <div v-else class="board-label" aria-hidden="true">JANNABI & GRASSHOPPER · {{ state.gameType.toUpperCase() }} CLUB</div>
     </div>
     <p class="sr-only" role="status" aria-live="polite">{{ hintMessage }}</p>
     <p class="sr-only" role="status">{{ selected === null ? '' : `${coordinate(selected)} 선택됨. 이동할 곳을 선택하세요.` }}</p>
@@ -190,7 +222,7 @@ const pad = useGamepad(enabled, {
 .piece-board-frame { position: relative; padding: 25px 13px 25px 25px; border: 1px solid #214237; border-radius: 15px; background: #315548; box-shadow: 0 5px 0 #213e32, 0 14px 26px #243e3217; }
 .piece-board { position: relative; display: grid; grid-template-columns: repeat(var(--board-columns), minmax(0, 1fr)); aspect-ratio: var(--board-columns) / var(--board-rows); border: 1px solid #233f34; }
 .piece-cell { position: relative; min-width: 0; min-height: 0; display: grid; place-items: center; aspect-ratio: 1; background: #eee9ce; isolation: isolate; }
-.chess .piece-cell.dark { background: #709078; }
+.checkers .piece-cell.dark, .chess .piece-cell.dark { background: #709078; }
 .piece-holder { position: relative; width: 85%; height: 85%; z-index: 1; transition: transform .16s ease, opacity .18s ease, filter .18s ease; }
 .piece-holder.subdued { opacity: .6; filter: grayscale(1); }
 .piece-cell.selected .piece-holder { transform: translateY(-5%); }

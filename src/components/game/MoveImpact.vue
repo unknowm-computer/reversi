@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, type CSSProperties } from 'vue';
 import { characterName, otherCharacter, type Character } from '../../../shared/game/types';
-import { IMPACT_MS, type ImpactKind } from '../../composables/useMoveImpact';
+import { IMPACT_MS, pieceImpactLabels, type ImpactKind } from '../../composables/useMoveImpact';
 import CharacterArt from './CharacterArt.vue';
 interface Props { actor: Character; kind: ImpactKind; count: number; compact?: boolean }
 const props = withDefaults(defineProps<Props>(), { compact: false });
-const title = computed<string>(() => props.kind === 'capture' ? `한 번에 ${props.count}개!` : props.kind === 'check' ? '체크!' : '장군!');
+const title = computed<string>(() => props.kind === 'capture' ? `한 번에 ${props.count}개!` : `${pieceImpactLabels[props.kind]}!`);
 const description = computed<string>(() => `${title.value} ${characterName(props.actor)}가 입꼬리를 당기며 메롱하고, ${characterName(otherCharacter(props.actor))}는 삐친 표정을 지어요.`);
 const sceneStyle: CSSProperties = { '--taunt-duration': `${IMPACT_MS}ms` };
 </script>

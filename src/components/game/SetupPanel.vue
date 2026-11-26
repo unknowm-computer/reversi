@@ -18,7 +18,7 @@ const emit = defineEmits<{
 const { config } = useSetupSettings();
 const selectedGame = computed<GameType>(() => config.gameType ?? 'reversi');
 const gameName = computed<string>(() => getGameName(selectedGame.value));
-const gameTagline = computed<string>(() => ({ reversi: '01 — 64개의 칸, 무한한 가능성', gomoku: '02 — 다섯 알에 담긴 한 수의 즐거움', chess: '03 — 64개의 칸, 왕을 지키는 한 수', battleship: '05 — 바다에 숨은 다섯 척의 함대', janggi: '04 — 궁성을 사이에 둔 초와 한' })[selectedGame.value]);
+const gameTagline = computed<string>(() => ({ reversi: '01 — 64개의 칸, 무한한 가능성', gomoku: '02 — 다섯 알에 담긴 한 수의 즐거움', chess: '03 — 64개의 칸, 왕을 지키는 한 수', checkers: '05 — 대각선을 따라 이어지는 점프', battleship: '06 — 바다에 숨은 다섯 척의 함대', janggi: '04 — 궁성을 사이에 둔 초와 한' })[selectedGame.value]);
 const code = ref('');
 const modes: { value: Mode; label: string; icon: 'spark' | 'users' | 'globe' }[] = [{ value: 'ai', label: '혼자 놀기', icon: 'spark' }, { value: 'local', label: '함께 놀기', icon: 'users' }, { value: 'online', label: '온라인', icon: 'globe' }];
 watch(selectedGame, gameType => emit('gameType', gameType), { immediate: true });

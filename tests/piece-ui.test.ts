@@ -34,14 +34,14 @@ function field(panel: VueWrapper, label: string): DOMWrapper<HTMLSelectElement> 
   return row.get<HTMLSelectElement>('select');
 }
 
-describe('five-game setup', () => {
+describe('six-game setup', () => {
   it('starts each selected game while preserving character, difficulty and clock settings', async () => {
     localStorage.setItem(SETUP_SETTINGS_KEY, JSON.stringify({ settings: { ...DEFAULT_SETTINGS, aiDifficulty: 5, seconds: 60 } }));
     const panel = setup();
-    const games: GameType[] = ['reversi', 'gomoku', 'chess', 'janggi', 'battleship'];
-    const names = ['리버시', '오목', '체스', '장기', '배틀쉽'];
-    const firstSides = ['흑돌이', '흑돌이', '백이', '초가', '제1함대가'];
-    expect(panel.findAll('.game-option')).toHaveLength(5);
+    const games: GameType[] = ['reversi', 'gomoku', 'chess', 'janggi', 'checkers', 'battleship'];
+    const names = ['리버시', '오목', '체스', '장기', '체커', '배틀쉽'];
+    const firstSides = ['흑돌이', '흑돌이', '백이', '초가', '흑돌이', '제1함대가'];
+    expect(panel.findAll('.game-option')).toHaveLength(6);
     await panel.findAll('.character-option')[1].trigger('click');
     for (const [index, gameType] of games.entries()) {
       await panel.findAll('.game-option')[index].trigger('click');
@@ -166,14 +166,16 @@ describe('piece-game help tabs', () => {
     expect(wrapper.text()).toContain('친선 규칙');
     expect(wrapper.text()).not.toContain('앙파상');
     await tabs[3].trigger('keydown', { key: 'ArrowRight' });
-    expect(active()).toBe('배틀쉽');
+    expect(active()).toBe('체커');
     await tabs[4].trigger('keydown', { key: 'ArrowRight' });
+    expect(active()).toBe('배틀쉽');
+    await tabs[5].trigger('keydown', { key: 'ArrowRight' });
     expect(active()).toBe('리버시');
     await tabs[0].trigger('keydown', { key: 'ArrowRight' });
     expect(active()).toBe('오목');
     await tabs[1].trigger('keydown', { key: 'End' });
     expect(active()).toBe('배틀쉽');
-    await tabs[4].trigger('keydown', { key: 'Home' });
+    await tabs[5].trigger('keydown', { key: 'Home' });
     expect(active()).toBe('리버시');
     expect(wrapper.props('gameType')).toBe('chess');
     await wrapper.setProps({ gameType: 'janggi' });

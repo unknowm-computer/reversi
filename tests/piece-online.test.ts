@@ -73,6 +73,15 @@ async function move(black: Client, white: Client, room: RoomSnapshot, index: num
 }
 
 describe('Authoritative online piece games', () => {
+  it('validates checker turns and synchronizes both players', async () => {
+    const { black, white, room } = await setup('checkers');
+    const response = await command(black, { type: 'move', requestId: randomUUID(), gameId: room.game!.gameId, expectedRevision: 0, index: 99 });
+    expect(response.errorCode).toBe('ILLEGAL_MOVE');
+    const next = await move(black, white, room, 0);
+    expect(next.game?.turn).toBe('white');
+    expect((await move(black, white, next, 0)).game?.checkers?.positionHistory).toHaveLength(3);
+  });
+
   it.each(['chess', 'janggi'] as const)('synchronizes %s pieces, rejects stolen/invalid moves, and preserves state on reconnect', async gameType => {
     const { black, white, created, room, connect } = await setup(gameType);
     const first = legalMoves(room.game!).find(code => code !== JANGGI_PASS)!;

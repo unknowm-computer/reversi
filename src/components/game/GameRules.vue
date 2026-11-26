@@ -7,7 +7,7 @@ interface Props { gameType?: GameType }
 const props = withDefaults(defineProps<Props>(), { gameType: 'reversi' });
 const emit = defineEmits<{ (event: 'close'): void }>();
 const selectedGame = ref<GameType>(props.gameType);
-const games: readonly GameType[] = ['reversi', 'gomoku', 'chess', 'janggi', 'battleship'];
+const games: readonly GameType[] = ['reversi', 'gomoku', 'chess', 'janggi', 'checkers', 'battleship'];
 const tabs = ref<HTMLElement | null>(null);
 const id = useId();
 watch(() => props.gameType, gameType => { selectedGame.value = gameType; });
@@ -50,6 +50,15 @@ function navigateTabs(event: KeyboardEvent, index: number): void {
           <li><strong>한 배의 모든 칸을 맞히면 격침이에요.</strong><span>격침된 배는 실제 위치에 붉은 선체로 나타나요. 상대의 마지막 배가 가라앉으면 승리해요.</span></li>
         </ol>
         <p>클릭·터치로 사격하거나 방향키로 이동한 뒤 Enter로 쏘세요. 조이패드는 십자키와 아래쪽 버튼을 사용해요.</p>
+      </template>
+      <template v-else-if="selectedGame === 'checkers'">
+        <p>8×8 영미식 체커는 각자 12개의 말로 시작해요. 상대가 더 움직일 수 없으면 승리예요.</p>
+        <ol>
+          <li><strong>어두운 칸으로 전진해요.</strong><span>일반 말은 대각선 앞으로 한 칸 이동해요.</span></li>
+          <li><strong>잡을 수 있으면 반드시 점프해요.</strong><span>상대 말 바로 너머의 빈칸을 선택하세요. 같은 말로 더 잡을 수 있으면 계속 뛰어요. 경로가 여럿이면 원하는 쪽을 고르세요.</span></li>
+          <li><strong>끝줄에 닿으면 킹이 돼요.</strong><span>승격하면 그 차례가 끝나요. 킹은 다음 차례부터 앞뒤 대각선으로 이동하고 잡을 수 있어요.</span></li>
+        </ol>
+        <p>같은 차례와 배치가 세 번 반복되거나 양쪽이 각각 40수 동안 일반 말 이동과 포획 없이 두면 무승부예요.</p>
       </template>
       <template v-else>
       <p v-if="selectedGame === 'gomoku'">가로, 세로, 대각선으로 내 돌 다섯 개를 나란히 연결해 보세요.</p>

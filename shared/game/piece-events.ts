@@ -2,6 +2,7 @@ import { isPlacement } from './engine.js';
 import { isPieceGame, type GameState } from './types.js';
 
 function positionHistory(state: GameState): readonly string[] | undefined {
+  if (state.checkers) return state.checkers.positionHistory;
   return state.gameType === 'chess' ? state.chess?.positionHistory : state.janggi?.positionHistory;
 }
 

@@ -6,6 +6,7 @@ import { JANGGI_PASS } from '../shared/game/pieces';
 import SetupPanel from './components/game/SetupPanel.vue';
 import GameSetupForm from './components/game/GameSetupForm.vue';
 import VictoryScene from './components/game/VictoryScene.vue';
+import DecisiveDance from './components/game/DecisiveDance.vue';
 import MoveImpact from './components/game/MoveImpact.vue';
 import TimeoutChoiceScene from './components/game/TimeoutChoiceScene.vue';
 import TimeoutPenalty from './components/game/TimeoutPenalty.vue';
@@ -198,6 +199,7 @@ function confirm(): void {
               :revision="store.state.revision"
               @move="game.move"
             />
+            <DecisiveDance v-if="game.impact.dancer.value" :key="store.state.revision" :character="character(game.impact.dancer.value)" />
             <MoveImpact
               v-if="game.impact.scene.value"
               :actor="character(game.impact.scene.value.actor)"

@@ -18,7 +18,14 @@ const janggiCharacter = computed<string>(() => ({
 </script>
 
 <template>
-  <svg v-if="gameType === 'janggi'" class="piece-art janggi-piece" :class="[piece.color, { general: piece.kind === 'general' }]" viewBox="0 0 80 80" aria-hidden="true">
+  <svg v-if="gameType === 'checkers'" class="piece-art" viewBox="0 0 80 80" aria-hidden="true">
+    <g :fill="piece.color === 'black' ? '#354b44' : '#f6e7bf'" :stroke="piece.color === 'black' ? '#172e27' : '#886e47'" stroke-width="3">
+      <ellipse cx="40" cy="44" rx="32" ry="28" /><ellipse cx="40" cy="38" rx="32" ry="27" />
+      <ellipse cx="40" cy="38" rx="25" ry="20" fill="none" />
+    </g>
+    <path v-if="piece.kind === 'king'" d="m24 32 9 6 7-13 7 13 9-6-4 18H28Z" fill="#d9ae53" stroke="#725323" stroke-width="2" />
+  </svg>
+  <svg v-else-if="gameType === 'janggi'" class="piece-art janggi-piece" :class="[piece.color, { general: piece.kind === 'general' }]" viewBox="0 0 80 80" aria-hidden="true">
     <defs>
       <linearGradient :id="woodEdgeId" x1="0" y1="0" x2="0.25" y2="1">
         <stop offset="0" stop-color="#f8dda4" />

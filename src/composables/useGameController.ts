@@ -4,7 +4,7 @@ import { useTurnTimer } from './useTurnTimer';
 import { useOnlineRoom } from './useOnlineRoom';
 import { useGameAudio } from './useGameAudio';
 import { useCharacterReaction } from './useCharacterReaction';
-import { useMoveImpact, IMPACT_MS } from './useMoveImpact';
+import { useMoveImpact, IMPACT_MS, pieceImpactLabels } from './useMoveImpact';
 import { useTimeoutPenalty } from './useTimeoutPenalty';
 import { useGameHint } from './useGameHint';
 import { useGameAiWorker } from './useGameAiWorker';
@@ -97,7 +97,8 @@ export function useGameController() {
     if (screen.value === 'deploying') return '보드에서 내 함대를 배치하세요.';
     if (screen.value === 'preparing') return '설정을 마치면 대국을 시작해요.';
     if (impact.scene.value) {
-      if (impact.scene.value.kind !== 'capture') return `${impact.scene.value.kind === 'check' ? '체크' : '장군'}! ${name(impact.scene.value.actor)}의 메롱~ 안전한 수로 벗어나세요.`;
+      if (impact.scene.value.kind === 'crown') return `킹 승격! ${name(impact.scene.value.actor)}의 메롱~`;
+      if (impact.scene.value.kind !== 'capture') return `${pieceImpactLabels[impact.scene.value.kind]}! ${name(impact.scene.value.actor)}의 메롱~ 안전한 수로 벗어나세요.`;
       return `한 수에 ${impact.scene.value.count}개! 메롱~ 잡아 봐!`;
     }
     if (store.state.result) return store.state.result.winner ? `${name(store.state.result.winner)}의 승리!` : '사이좋게 무승부!';

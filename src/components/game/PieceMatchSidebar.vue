@@ -9,7 +9,7 @@ interface Props { state: GameState }
 const props = defineProps<Props>();
 const sides: Color[] = ['black', 'white'];
 const status = computed<string>(() => props.state.result ? props.state.result.winner ? `${sideName(props.state.gameType, props.state.result.winner)}의 승리` : '무승부' : `${sideName(props.state.gameType, props.state.turn)}의 차례`);
-const moveCount = computed<number>(() => Math.max(0, (props.state.chess?.positionHistory.length ?? props.state.janggi?.positionHistory.length ?? 1) - 1));
+const moveCount = computed<number>(() => Math.max(0, (props.state.chess?.positionHistory.length ?? props.state.janggi?.positionHistory.length ?? props.state.checkers?.positionHistory.length ?? 1) - 1));
 const checkMessage = computed<string>(() => props.state.check && !props.state.result ? `${sideName(props.state.gameType, props.state.check)} ${props.state.gameType === 'janggi' ? '장군' : '체크'}` : '');
 function count(color: Color): number { return props.state.pieces?.filter(piece => piece?.color === color).length ?? 0; }
 function emblem(color: Color): Piece { return { color, kind: props.state.gameType === 'janggi' ? 'general' : 'king' }; }
@@ -18,7 +18,7 @@ function emblem(color: Color): Piece { return { color, kind: props.state.gameTyp
 <template>
   <div class="piece-match-sidebar">
     <div class="match-card">
-      <p class="eyebrow muted">{{ state.gameType === 'janggi' ? 'JANGGI CLUB' : 'CHESS CLUB' }}</p>
+      <p class="eyebrow muted">{{ state.gameType.toUpperCase() }} CLUB</p>
       <h2>{{ status }}</h2>
       <p v-if="checkMessage" class="check-notice">{{ checkMessage }}</p>
       <p v-else-if="state.janggi?.bikjang && !state.result" class="bikjang-notice">빅장 · 응수하거나 무승부를 수락해요</p>
@@ -28,7 +28,7 @@ function emblem(color: Color): Piece { return { color, kind: props.state.gameTyp
     <div class="tip-card">
       <AppIcon name="leaf" /><p class="eyebrow">A LITTLE TIP</p>
       <h3>{{ state.gameType === 'janggi' ? '궁을 지키며 한 수씩' : '함께 움직이면 든든해요' }}</h3>
-      <p>{{ state.gameType === 'janggi' ? '마와 상의 길을 열고, 포를 넘길 기물도 살펴보세요.' : '기물끼리 지켜주며 중앙을 차지해 보세요. 왕의 안전도 잊지 마세요.' }}</p>
+      <p>{{ state.gameType === 'checkers' ? '두 말을 대각선으로 붙여 두면 상대가 뛰어넘을 자리를 막을 수 있어요.' : state.gameType === 'janggi' ? '마와 상의 길을 열고, 포를 넘길 기물도 살펴보세요.' : '기물끼리 지켜주며 중앙을 차지해 보세요. 왕의 안전도 잊지 마세요.' }}</p>
       <p v-if="state.gameType === 'janggi'" class="draw-note">친선 규칙 · 빅장 수락이나 같은 국면 3회 반복, 서로 연속해서 한 수씩 쉬면 무승부예요.</p>
     </div>
   </div>

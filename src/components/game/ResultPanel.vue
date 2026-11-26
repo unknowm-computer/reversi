@@ -18,8 +18,9 @@ const reason = computed<string>(() => {
       : '양쪽 모두 금수로 놓을 곳이 없어 무승부예요';
   }
   return ({
+    fortyMoves: '양쪽 모두 40수 동안 일반 말 이동이나 포획이 없어 무승부예요',
     fleetSunk: '상대 함대 다섯 척을 모두 격침했어요',
-    noLegalMoves: '모든 수를 마쳤어요', fiveInRow: '다섯 돌을 이어 승리했어요', boardFull: '빈 교차점 없이 판을 채웠어요',
+    noLegalMoves: props.game.gameType === 'checkers' ? '상대가 움직일 수 있는 말이 없어 승리했어요' : '모든 수를 마쳤어요', fiveInRow: '다섯 돌을 이어 승리했어요', boardFull: '빈 교차점 없이 판을 채웠어요',
     resign: '기권으로 대국이 끝났어요', timeout: '제한 시간이 다 되었어요', disconnect: '상대의 연결이 종료되었어요',
     checkmate: props.game.gameType === 'chess' ? '체크메이트! 킹이 피할 곳이 없어요' : '외통장군! 궁을 지킬 수 없어요',
     stalemate: '체크가 아니지만 움직일 수 없어 무승부예요', repetition: '같은 국면이 세 번 나타나 무승부예요',

@@ -3,7 +3,7 @@ import type { Square } from 'chess.js';
 import { initialState, applyMove } from '../shared/games/reversi/rules';
 import { initialState as initialGomokuState, applyMove as applyGomokuMove } from '../shared/games/gomoku/rules';
 import { endGame } from '../shared/game/state';
-import { encodePieceMove } from '../shared/game/pieces';
+import { encodePieceMove, PROMOTIONS } from '../shared/game/pieces';
 import type { GameState, Piece } from '../shared/game/types';
 import { initialState as initialChessState, applyMove as applyChessMove, squareIndex } from '../shared/games/chess/rules';
 import { initialState as initialJanggiState, applyMove as applyJanggiMove } from '../shared/games/janggi/rules';
@@ -81,6 +81,37 @@ describe('piece game character reactions', () => {
     }
   });
 
+  it('celebrates taking the opposing chess queen or janggi chariot', () => {
+    const chess = chessSequence([['e2', 'e4'], ['d7', 'd5'], ['e4', 'd5'], ['d8', 'd5'], ['b1', 'c3'], ['a7', 'a6']]);
+    const janggi = initialJanggiState('chariot');
+    const pieces = Array<Piece | null>(90).fill(null);
+    pieces[75] = { color: 'black', kind: 'general' };
+    pieces[14] = { color: 'white', kind: 'general' };
+    pieces[45] = { color: 'black', kind: 'rook' };
+    pieces[48] = { color: 'white', kind: 'rook' };
+    janggi.pieces = pieces;
+    janggi.board = pieces.map(piece => piece?.color ?? null);
+    const reaction = useCharacterReaction();
+    reaction.transition(chess, applyChessMove(chess, encodePieceMove(squareIndex('c3'), squareIndex('d5')))!, 'jannabi');
+    expect(reaction.reactions.value).toEqual({ black: 'happy', white: 'sad' });
+    reaction.transition(janggi, applyJanggiMove(janggi, encodePieceMove(45, 48))!, 'grasshopper');
+    expect(reaction.reactions.value).toEqual({ black: 'happy', white: 'sad' });
+  });
+
+  it.each(PROMOTIONS)('laughs on promotion to %s on an empty square or by capture', promotion => {
+    const before = chessSequence([['a2', 'a4'], ['b8', 'c6'], ['a4', 'a5'], ['h7', 'h5'],
+      ['a5', 'a6'], ['h5', 'h4'], ['a6', 'b7'], ['h4', 'h3']]);
+    for (const to of ['a8', 'b8'] as const) {
+      const next = applyChessMove(before, encodePieceMove(squareIndex('b7'), squareIndex(to), promotion))!;
+      const reaction = useCharacterReaction();
+      reaction.transition(before, next, 'grasshopper');
+      expect(reaction.reactions.value.black).toBe('laugh');
+      expect(reaction.event.value).toBe('laugh');
+      reaction.transition(next, next, 'grasshopper');
+      expect(reaction.event.value).toBe('move');
+    }
+  });
+
   it('recognizes en passant as a capture even though its destination was empty', () => {
     const before = chessSequence([['e2', 'e4'], ['a7', 'a6'], ['e4', 'e5'], ['d7', 'd5']]);
     const next = applyChessMove(before, encodePieceMove(squareIndex('e5'), squareIndex('d6')))!;
@@ -132,6 +163,28 @@ describe('piece game character reactions', () => {
 });
 
 describe('gomoku character reactions', () => {
+  it.each(['black', 'white'] as const)('reacts to a new open three or winning four by %s', actor => {
+    const rival = actor === 'black' ? 'white' : 'black';
+    for (const pattern of ['openThree', 'four', 'closedThree', 'unrelated'] as const) {
+      const before = initialGomokuState('threat');
+      before.turn = actor;
+      before.board[109] = before.board[110] = actor;
+      if (pattern === 'four') before.board[112] = actor;
+      if (pattern === 'four' || pattern === 'closedThree') before.board[108] = rival;
+      if (pattern === 'unrelated') before.board[111] = actor;
+      const next = applyGomokuMove(before, pattern === 'unrelated' ? 0 : 111)!;
+      const reaction = useCharacterReaction();
+      reaction.transition(before, next, 'grasshopper');
+      if (pattern === 'openThree' || pattern === 'four') {
+        expect(reaction.reactions.value[actor]).toBe('sly');
+        expect(reaction.reactions.value[rival]).toBe('urgent');
+        expect(reaction.event.value).toBe('laugh');
+        reaction.transition(next, next, 'grasshopper');
+      }
+      expect(reaction.event.value).toBe('move');
+    }
+  });
+
   it('keeps ordinary intersections free of capture or corner celebrations and clears the previous game reaction', () => {
     const before = initialGomokuState('gomoku');
     const reaction = useCharacterReaction();

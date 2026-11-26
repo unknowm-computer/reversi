@@ -53,9 +53,9 @@ function canCompleteFive(board: Cell[], index: number, color: Color): boolean {
 }
 
 /** Count distinct four-stone threats, including two independent fours in one direction. */
-function countFours(board: Cell[], index: number, color: Color): number {
+function countFours(board: Cell[], index: number, color: Color, directions = GOMOKU_DIRECTIONS): number {
   const fours = new Set<string>();
-  for (const [dr, dc] of GOMOKU_DIRECTIONS) {
+  for (const [dr, dc] of directions) {
     for (let start = -4; start <= 0; start++) {
       const stones: number[] = [];
       let empty: number | null = null;
@@ -104,10 +104,10 @@ function openFourExtensions(board: Cell[], index: number, color: Color, dr: numb
 }
 
 /** The board already contains the proposed stone; temporary extensions are restored. */
-function createsDoubleThree(board: Cell[], index: number, color: Color): boolean {
-  const possibleThrees = GOMOKU_DIRECTIONS.map(([dr, dc]) => openFourExtensions(board, index, color, dr, dc))
+function hasOpenThrees(board: Cell[], index: number, color: Color, required: 1 | 2, directions = GOMOKU_DIRECTIONS): boolean {
+  const possibleThrees = directions.map(([dr, dc]) => openFourExtensions(board, index, color, dr, dc))
     .filter(extensions => extensions.length > 0);
-  if (possibleThrees.length < 2) return false;
+  if (possibleThrees.length < required) return false;
 
   let openThrees = 0;
   for (const extensions of possibleThrees) {
@@ -122,9 +122,24 @@ function createsDoubleThree(board: Cell[], index: number, color: Color): boolean
       return !completesFive && forbidden === null;
     });
     // Both endpoints (and broken-three alternatives) in one direction count once.
-    if (canExtend && ++openThrees >= 2) return true;
+    if (canExtend && ++openThrees >= required) return true;
   }
   return false;
+}
+
+/** Classify threats through the last stone without probing the reactive game board in place. */
+export function threatAfterMove(state: GameState): 'threeFour' | 'four' | 'openThree' | null {
+  const index = state.lastMove;
+  if (state.gameType !== 'gomoku' || state.result || index === null) return null;
+  const board = [...state.board];
+  const color = board[index];
+  if (!color) return null;
+  const four = GOMOKU_DIRECTIONS.find(direction => countFours(board, index, color, [direction]) > 0);
+  if (four) {
+    const otherDirections = GOMOKU_DIRECTIONS.filter(direction => direction !== four);
+    return hasOpenThrees(board, index, color, 1, otherDirections) ? 'threeFour' : 'four';
+  }
+  return hasOpenThrees(board, index, color, 1) ? 'openThree' : null;
 }
 
 /** The board includes the candidate stone; all temporary threat probes restore it. */
@@ -133,7 +148,7 @@ function forbiddenReasonAfterPlacement(board: Cell[], index: number, color: Colo
   if (lines.some(line => line.length >= 6)) return 'overline';
   if (lines.some(line => line.length === 5)) return null;
   if (countFours(board, index, color) >= 2) return 'doubleFour';
-  return createsDoubleThree(board, index, color) ? 'doubleThree' : null;
+  return hasOpenThrees(board, index, color, 2) ? 'doubleThree' : null;
 }
 
 /** The same overline, double-four and double-three restrictions apply to both colors. */

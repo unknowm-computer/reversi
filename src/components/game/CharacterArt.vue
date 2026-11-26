@@ -39,8 +39,14 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
         <g class="normal-limbs" stroke-linecap="round" stroke-linejoin="round">
           <path class="tail" d="M143 166c34 27 65 6 58-16-5-17-28-19-31-5-2 9 8 13 14 8" fill="none" stroke="#946443" stroke-width="12" />
           <g fill="#a8764e" stroke="#664832" stroke-width="3">
-            <path d="M84 171q-7 11-11 23-10 0-11 8-1 9 16 9 14 0 18-10l10-22Z" />
-            <path d="M119 180l8 21q4 10 19 10 16 0 15-9-1-8-11-8l-11-24Z" />
+            <g class="left-leg">
+              <path d="M84 171q-7 11-11 23-10 0-11 8-1 9 16 9 14 0 18-10l10-22Z" />
+              <path d="m74 201 2-4" fill="none" stroke="#80593e" stroke-width="2" />
+            </g>
+            <g class="right-leg">
+              <path d="M119 180l8 21q4 10 19 10 16 0 15-9-1-8-11-8l-11-24Z" />
+              <path d="m141 201-2-4" fill="none" stroke="#80593e" stroke-width="2" />
+            </g>
             <path v-if="!lariat && !taunt" class="left-arm" d="M84 126c-19-4-30 12-35 29-5 13-1 21 8 21 8 0 11-6 13-14l21-17" />
             <g v-if="!lariat && !toast && !taunt" class="right-arm">
               <path d="M137 126c15 8 25 14 34 2l13-22c5-9 14-8 18-2 4 6 0 12-4 18l-15 24c-12 17-30 18-49 3" />
@@ -55,7 +61,6 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
           </g>
           <ellipse cx="111" cy="155" rx="25" ry="28" fill="#efd6ac" />
           <path d="M98 142q10-8 22-2" fill="none" stroke="#fae7c4" stroke-width="4" />
-          <path d="m74 201 2-4m65 4-2-4" fill="none" stroke="#80593e" stroke-width="2" />
         </g>
         <g class="head">
           <circle cx="58" cy="78" r="24" fill="#a8764e" stroke="#664832" stroke-width="3"/><circle cx="161" cy="78" r="24" fill="#a8764e" stroke="#664832" stroke-width="3"/>
@@ -65,7 +70,7 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
           <path d="m99 33 2-16 12 15 12-12 2 15" fill="#a8764e" stroke="#664832" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
           <g class="eyes"><ellipse cx="92" cy="82" rx="4.5" ry="6.5" fill="#352f28"/><ellipse cx="129" cy="82" rx="4.5" ry="6.5" fill="#352f28"/><g fill="#fff8e8"><circle cx="93" cy="80" r="1.4"/><circle cx="130" cy="80" r="1.4"/></g></g>
           <template v-if="!taunt">
-          <g v-if="still && mood === 'win'" class="big-smile"><path d="M82 83q10-15 20 0m17 0q10-15 20 0" fill="none" stroke="#664832" stroke-width="4" stroke-linecap="round"/><path d="M87 105q24 39 49-3Z" fill="#743f32" stroke="#664832" stroke-width="3"/><path d="M95 108q15 6 31-1" stroke="#fff8df" stroke-width="7"/></g>
+          <g v-if="mood === 'laugh' || (still && mood === 'win')" class="big-smile"><path d="M82 83q10-15 20 0m17 0q10-15 20 0" fill="none" stroke="#664832" stroke-width="4" stroke-linecap="round"/><path d="M87 105q24 39 49-3Z" fill="#743f32" stroke="#664832" stroke-width="3"/><path d="M95 108q15 6 31-1" stroke="#fff8df" stroke-width="7"/></g>
           <path v-else-if="pose === 'plead'" d="M98 109q12-6 24 0" fill="none" stroke="#664832" stroke-width="3" stroke-linecap="round"/>
           <g v-else-if="mood === 'sly'" class="sly-face"><path d="m82 69 20 8m18 0 20-9" fill="none" stroke="#664832" stroke-width="5" stroke-linecap="round"/><path d="M87 103q25 32 50-7-28 15-50 7" fill="#fff8df" stroke="#664832" stroke-width="3"/><path d="m107 110 1 7m11-10 2 6" stroke="#664832" stroke-width="2"/></g>
           <g v-else-if="mood === 'annoyed'"><path d="m83 71 18 4m18 0 18-4M98 112q14-5 27-1" fill="none" stroke="#664832" stroke-width="3" stroke-linecap="round" /></g>
@@ -89,8 +94,8 @@ withDefaults(defineProps<Props>(), { mood: 'idle', decorative: true, portrait: f
         <template v-else>
           <g class="normal-limbs" stroke-linecap="round" stroke-linejoin="round">
             <g fill="#aabc77" stroke="#496341" stroke-width="3">
-              <path d="M86 171q-11 9-18 24l-14 3q-9 2-7 8 2 6 14 3l17-5 24-24Z" />
-              <path d="m123 180 19 23 18 6q12 3 14-3 2-6-7-8l-15-4-14-25Z" />
+              <path class="left-leg" d="M86 171q-11 9-18 24l-14 3q-9 2-7 8 2 6 14 3l17-5 24-24Z" />
+              <path class="right-leg" d="m123 180 19 23 18 6q12 3 14-3 2-6-7-8l-15-4-14-25Z" />
             </g>
             <path d="M88 119q-26 1-27 28-1 27 31 31m40-59q26 1 27 28 1 27-31 31" fill="#c4d494" stroke="#6d854e" stroke-width="2.5" />
             <path d="M84 115c-10 14-15 32-11 48 4 18 18 29 37 29s33-11 37-29c4-16-1-34-11-48Z" fill="#9eb76c" stroke="#496341" stroke-width="3" />
@@ -158,11 +163,11 @@ ellipse.pose-belly { stroke: none; }
 @keyframes pleading { 0%, 100% { transform: translateY(22px) scale(.88); } 50% { transform: translateY(29px) rotate(-5deg) scale(.88); } }
 @keyframes clasp { 50% { transform: translateY(-3px) rotate(5deg); } }
 @keyframes considering { 0%, 100% { transform: rotate(3deg); } 50% { transform: rotate(-7deg) translateY(-2px); } }
-.still.mood-win .eyes { display: none; }
+.mood-laugh .eyes, .still.mood-win .eyes { display: none; }
 .lariat .body { animation: none; }
 .swing .body { animation: none; }
 .portrait .body { transform-origin: 110px 80px; }
-.mood-sly .head { animation: chuckle .38s ease-in-out infinite alternate; }
+.mood-laugh .head, .mood-sly .head { animation: chuckle .38s ease-in-out infinite alternate; }
 .mood-sly .eyes { transform: scaleY(.6); transform-origin: 110px 82px; }
 .mood-whistle .head { animation: ponder .8s ease-in-out infinite alternate; }
 .whistle-note { animation: whistle-note .7s ease-out infinite; }
@@ -173,6 +178,10 @@ ellipse.pose-belly { stroke: none; }
 .right-arm { transform-origin: 144px 128px; }
 .mood-happy .body, .mood-dance .body, .mood-win .body { animation: celebrate .95s ease-in-out infinite alternate; }
 .mood-win .right-arm, .mood-dance .right-arm { animation: wave .8s ease-in-out infinite alternate; }
+.mood-dance:not(.portrait) .left-leg { transform-origin: 94px 176px; animation: dance-kick .32s ease-in-out infinite alternate; }
+.mood-dance:not(.portrait) .right-leg { transform-origin: 128px 176px; animation: dance-kick .32s ease-in-out infinite alternate-reverse; }
+.mood-dance:not(.portrait) .bow-arm { transform-origin: 145px 132px; animation: play-violin .32s ease-in-out infinite; }
+@keyframes dance-kick { from { transform: rotate(-22deg); } to { transform: rotate(22deg); } }
 .mood-think .head, .mood-undo .head { animation: ponder 1.4s ease-in-out infinite alternate; }
 .mood-urgent .body { animation: tremble .15s linear infinite alternate; }
 .mood-sad .head, .mood-lose .head { transform: rotate(12deg) translateY(9px); }

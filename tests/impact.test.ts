@@ -141,6 +141,7 @@ describe('check and janggun taunts', () => {
     wrapper = mount(defineComponent({ setup() { impact = useMoveImpact(() => state.value, start); return () => null; } }));
     state.value = next;
     expect(impact.displayed.value).toEqual(next);
+    expect(impact.dancer.value).toBeNull();
     expect(impact.busy.value).toBe(true);
     expect(start).toHaveBeenCalledOnce();
     vi.advanceTimersByTime(IMPACT_MS - 1);
@@ -185,5 +186,69 @@ describe('check and janggun taunts', () => {
     expect(wrapper.get('[role="status"]').attributes('aria-label')).toContain(title);
     expect(wrapper.find('.character.taunt').exists()).toBe(true);
     expect(wrapper.text()).not.toContain('0개');
+  });
+});
+
+describe('decisive move dance', () => {
+  function observe(before: GameState, online = false) {
+    const state = ref(before);
+    let impact!: ReturnType<typeof useMoveImpact>;
+    wrapper = mount(defineComponent({ setup() {
+      impact = useMoveImpact(() => state.value, undefined, () => !online);
+      return () => null;
+    } }));
+    return { state, impact };
+  }
+
+  it.each(['black', 'white'] as const)('dances for a %s three-four, then continues the game', actor => {
+    const before = initialGomokuState('three-four');
+    before.turn = actor;
+    for (const index of [109, 110, 111, 97, 127]) before.board[index] = actor;
+    const { state, impact } = observe(before, true);
+    const next = applyGomokuMove(before, 112)!;
+    state.value = next;
+    expect(next.result).toBeNull();
+    expect(impact.dancer.value).toBe(actor);
+    expect(impact.busy.value).toBe(false);
+    vi.advanceTimersByTime(IMPACT_MS / 2);
+    state.value = { ...next };
+    vi.advanceTimersByTime(IMPACT_MS / 2);
+    expect(impact.dancer.value).toBeNull();
+  });
+
+  it.each([[110, 111], [109, 110, 111]])('keeps a single threat on the profile', (...stones) => {
+    const before = initialGomokuState('single-threat');
+    for (const index of stones) before.board[index] = 'black';
+    const { state, impact } = observe(before);
+    state.value = applyGomokuMove(before, 112)!;
+    expect(impact.dancer.value).toBeNull();
+  });
+
+  it.each(['chess', 'janggi'] as const)('shows the %s winner dancing before the victory scene, including online', gameType => {
+    let before: GameState;
+    let next: GameState;
+    if (gameType === 'chess') {
+      before = initialChessState('mate');
+      for (const [from, to] of [['f2', 'f3'], ['e7', 'e5'], ['g2', 'g4']] as const) {
+        before = applyChessMove(before, encodePieceMove(squareIndex(from), squareIndex(to)))!;
+      }
+      next = applyChessMove(before, encodePieceMove(squareIndex('d8'), squareIndex('h4')))!;
+    } else {
+      const pieces = Array<Piece | null>(90).fill(null);
+      pieces[75] = { color: 'black', kind: 'general' };
+      pieces[4] = { color: 'white', kind: 'general' };
+      for (const index of [12, 14, 18]) pieces[index] = { color: 'black', kind: 'rook' };
+      before = { ...initialJanggiState('mate'), pieces, board: pieces.map(piece => piece?.color ?? null) };
+      next = applyJanggiMove(before, encodePieceMove(18, 22))!;
+    }
+    const { state, impact } = observe(before, true);
+    state.value = next;
+    expect(next.result).toEqual({ reason: 'checkmate', winner: before.turn });
+    expect(impact.dancer.value).toBe(before.turn);
+    expect(impact.scene.value).toBeNull();
+    expect(impact.busy.value).toBe(true);
+    vi.advanceTimersByTime(IMPACT_MS);
+    expect(impact.dancer.value).toBeNull();
+    expect(impact.busy.value).toBe(false);
   });
 });

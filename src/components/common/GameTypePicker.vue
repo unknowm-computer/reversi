@@ -23,6 +23,7 @@ const games: { value: GameType; description: string }[] = [
   { value: "gomoku", description: "다섯 알을 나란히" },
   { value: "chess", description: "상대 킹을 체크메이트" },
   { value: "janggi", description: "초와 한의 한판 승부" },
+  { value: "checkers", description: "대각선으로 뛰어넘어 잡아요" },
   { value: "battleship", description: "숨은 함대를 격파하세요" },
 ];
 </script>

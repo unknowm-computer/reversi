@@ -136,7 +136,7 @@ describe('Pre-game settings in the game screen', () => {
     const form = app.getComponent(GameSetupForm);
     expect(form.get(`[data-color="${color}"]`).attributes('aria-label')).toMatch(/^나 ·/);
     expect(form.get('fieldset').attributes('disabled') !== undefined).toBe(color === 'white');
-    expect(form.findAll('.game-option')).toHaveLength(5);
+    expect(form.findAll('.game-option')).toHaveLength(6);
     expect(form.find('.setup-summary').exists()).toBe(false);
     expect(form.find('.player-heading select').exists()).toBe(false);
     expect(form.get<HTMLButtonElement>('[type="submit"]').element.disabled).toBe(color === 'white');
@@ -174,7 +174,7 @@ describe('Pre-game settings in the game screen', () => {
     expect(controller.timer.remaining.value).toBe(60000);
   });
 
-  it.each<GameType>(['reversi', 'gomoku', 'chess', 'janggi'])('opens %s behind the settings dialog and enables play only after confirmation', async gameType => {
+  it.each<GameType>(['reversi', 'gomoku', 'chess', 'janggi', 'checkers'])('opens %s behind the settings dialog and enables play only after confirmation', async gameType => {
     const app = startApp();
     const settings: GameSettings = { ...DEFAULT_SETTINGS, gameType, mode: 'local', blackCharacter: 'jannabi', seconds: 30 };
     const setup = app.getComponent(SetupPanel);

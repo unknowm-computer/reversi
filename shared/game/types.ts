@@ -2,7 +2,7 @@ export type Color = 'black' | 'white';
 export type Cell = Color | null;
 export type Character = 'jannabi' | 'grasshopper';
 export type Mode = 'ai' | 'local' | 'online';
-export type GameType = 'reversi' | 'gomoku' | 'chess' | 'janggi' | 'battleship';
+export type GameType = 'reversi' | 'gomoku' | 'chess' | 'janggi' | 'checkers' | 'battleship';
 export type PieceKind = 'king' | 'queen' | 'rook' | 'bishop' | 'knight' | 'pawn' | 'general' | 'guard' | 'elephant' | 'horse' | 'cannon' | 'soldier';
 export interface Piece { color: Color; kind: PieceKind }
 export type JanggiFormation = 'outer' | 'inner' | 'left' | 'right';
@@ -30,7 +30,7 @@ export interface GameSettings {
 export interface Score { black: number; white: number; empty: number }
 export interface GameResult {
   winner: Color | null;
-  reason: 'noLegalMoves' | 'fiveInRow' | 'boardFull' | 'resign' | 'timeout' | 'disconnect' | 'checkmate' | 'stalemate' | 'repetition' | 'fiftyMoves' | 'insufficientMaterial' | 'bikjang' | 'mutualPass' | 'fleetSunk';
+  reason: 'noLegalMoves' | 'fiveInRow' | 'boardFull' | 'resign' | 'timeout' | 'disconnect' | 'checkmate' | 'stalemate' | 'repetition' | 'fiftyMoves' | 'insufficientMaterial' | 'bikjang' | 'mutualPass' | 'fleetSunk' | 'fortyMoves';
 }
 export type Shot = 'hit' | 'miss' | 'sunk' | null;
 export interface BattleshipPosition {
@@ -56,18 +56,19 @@ export interface GameState {
   lastFrom?: number | null;
   check?: Color | null;
   battleship?: BattleshipPosition;
+  checkers?: { positionHistory: string[]; quietPlies: number };
   chess?: ChessPosition;
   janggi?: JanggiPosition;
 }
 export interface HistoryEntry { state: GameState; remaining: number; actor: Color }
-export type Reaction = 'idle' | 'think' | 'urgent' | 'happy' | 'sad' | 'dance' | 'undo' | 'annoyed' | 'pass' | 'win' | 'lose' | 'draw' | 'sly' | 'whistle';
+export type Reaction = 'idle' | 'think' | 'urgent' | 'happy' | 'laugh' | 'sad' | 'dance' | 'undo' | 'annoyed' | 'pass' | 'win' | 'lose' | 'draw' | 'sly' | 'whistle';
 export const DEFAULT_SETTINGS: GameSettings = { gameType: 'reversi', mode: 'ai', seconds: 30, undoLimit: 1, blackCharacter: 'grasshopper', aiDifficulty: DEFAULT_AI_DIFFICULTY, janggiBlackFormation: 'outer', janggiWhiteFormation: 'outer' };
 export const JANGGI_FORMATIONS: ReadonlyArray<{ value: JanggiFormation; label: string }> = [
   { value: 'outer', label: '바깥마 · 마상상마' }, { value: 'inner', label: '안쪽마 · 상마마상' },
   { value: 'left', label: '왼마 · 마상마상' }, { value: 'right', label: '오른마 · 상마상마' },
 ];
-export const gameName = (gameType: GameType = 'reversi'): string => ({ reversi: '리버시', gomoku: '오목', chess: '체스', janggi: '장기', battleship: '배틀쉽' })[gameType];
-export const isPieceGame = (gameType: GameType): boolean => gameType === 'chess' || gameType === 'janggi';
+export const gameName = (gameType: GameType = 'reversi'): string => ({ reversi: '리버시', gomoku: '오목', chess: '체스', janggi: '장기', checkers: '체커', battleship: '배틀쉽' })[gameType];
+export const isPieceGame = (gameType: GameType): boolean => gameType === 'chess' || gameType === 'janggi' || gameType === 'checkers';
 /** Internal black/white identify first/second player; chess starts with white. */
 export const sideName = (gameType: GameType, color: Color): string => gameType === 'battleship' ? (color === 'black' ? '제1함대' : '제2함대') : gameType === 'chess' ? (color === 'black' ? '백' : '흑') : gameType === 'janggi' ? (color === 'black' ? '초' : '한') : (color === 'black' ? '흑' : '백');
 export const characterName = (character: Character): string => character === 'jannabi' ? '잔나비' : '베짱이';

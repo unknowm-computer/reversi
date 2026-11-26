@@ -4,7 +4,7 @@ import { validFleet } from './games/battleship/rules.js';
 import { MAX_MOVE_CODE } from './game/pieces.js';
 const formationSchema = z.enum(['outer', 'inner', 'left', 'right']);
 const settingsSchema = z.object({
-  gameType: z.enum(['reversi', 'gomoku', 'chess', 'janggi', 'battleship']).default('reversi'),
+  gameType: z.enum(['reversi', 'gomoku', 'chess', 'janggi', 'checkers', 'battleship']).default('reversi'),
   mode: z.literal('online'), seconds: z.union([z.literal(0), z.literal(30), z.literal(60)]),
   undoLimit: z.literal(0), blackCharacter: z.enum(['jannabi', 'grasshopper']),
   janggiBlackFormation: formationSchema.optional(), janggiWhiteFormation: formationSchema.optional(),

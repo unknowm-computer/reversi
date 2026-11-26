@@ -27,7 +27,7 @@ function loadPreferences(): SetupPreferences {
       const times = isRecord(value.modeSeconds) ? value.modeSeconds : {};
       return {
         settings: {
-          gameType: validValue(settings.gameType, ['reversi', 'gomoku', 'chess', 'janggi', 'battleship'] as const, 'reversi'),
+          gameType: validValue(settings.gameType, ['reversi', 'gomoku', 'chess', 'janggi', 'checkers', 'battleship'] as const, 'reversi'),
           mode: validValue(settings.mode, ['ai', 'local', 'online'] as const, DEFAULT_SETTINGS.mode),
           seconds: validValue(settings.seconds, allowedSeconds, DEFAULT_SETTINGS.seconds),
           undoLimit: validValue(settings.undoLimit, [-1, 0, 1, 3] as const, DEFAULT_SETTINGS.undoLimit),

@@ -11,8 +11,12 @@ withDefaults(defineProps<Props>(), { mood: 'idle', still: false, taunt: false, p
     <ellipse cx="89" cy="67" rx="16" ry="19" fill="#f6f2d5"/><ellipse cx="136" cy="65" rx="16" ry="19" fill="#f6f2d5"/>
     <g class="eyes"><ellipse cx="94" cy="71" rx="4.5" ry="6.5" fill="#304634"/><ellipse cx="140" cy="69" rx="4.5" ry="6.5" fill="#304634"/><g fill="#fffdf0"><circle cx="95" cy="69" r="1.5"/><circle cx="141" cy="67" r="1.5"/></g></g>
     <template v-if="!taunt">
-    <g v-if="still && mood === 'win'" class="big-smile"><path d="M82 73q11-16 22 0m25-2q11-16 22 0" fill="none" stroke="#496341" stroke-width="4" stroke-linecap="round"/><path d="M94 96q21 38 43-5Z" fill="#654633" stroke="#496341" stroke-width="3"/><path d="M102 99q13 3 26-2" stroke="#fff8df" stroke-width="6"/></g>
+    <g v-if="mood === 'laugh' || (still && mood === 'win')" class="big-smile"><path d="M82 73q11-16 22 0m25-2q11-16 22 0" fill="none" stroke="#496341" stroke-width="4" stroke-linecap="round"/><path d="M94 96q21 38 43-5Z" fill="#654633" stroke="#496341" stroke-width="3"/><path d="M102 99q13 3 26-2" stroke="#fff8df" stroke-width="6"/></g>
     <path v-else-if="pose === 'plead'" d="M101 101q12-6 23 0" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round"/>
+    <g v-else-if="mood === 'sly'">
+      <path d="m78 58 20 6m28-2 19-9" fill="none" stroke="#496341" stroke-width="3.5" stroke-linecap="round" />
+      <path d="M94 98q20 24 44-9-22 12-44 9Z" fill="#fff8df" stroke="#496341" stroke-width="3" stroke-linejoin="round" />
+    </g>
     <g v-else-if="mood === 'whistle'"><path d="M96 96q10 14 22 1" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round"/><ellipse cx="127" cy="97" rx="5" ry="4" fill="#496341"/><text class="whistle-note" x="159" y="75" fill="#496341" font-size="28">♪</text></g>
     <g v-else-if="mood === 'annoyed'"><path d="m82 58 18 4m28-2 17-5M101 104q13-7 26-2" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round" /></g>
     <path v-else-if="['sad','lose','urgent'].includes(mood)" d="M98 104q15-13 28-2" fill="none" stroke="#496341" stroke-width="3" stroke-linecap="round"/>
@@ -28,7 +32,7 @@ withDefaults(defineProps<Props>(), { mood: 'idle', still: false, taunt: false, p
 .face-idle:not(.frozen) .eyes { transform-box: fill-box; transform-origin: center; animation: blink 5.6s 1.8s ease-in-out infinite; }
 .face-sly .eyes { transform: scaleY(.6); transform-origin: 110px 82px; }
 .face-annoyed .eyes { transform: scaleY(.55); transform-origin: center 78px; }
-.frozen.face-win .eyes { display: none; }
+.face-laugh .eyes, .frozen.face-win .eyes { display: none; }
 .frozen .antennae { animation: none; }
 .whistle-note { animation: whistle-note .7s ease-out infinite; }
 .frozen .whistle-note { animation: none; }

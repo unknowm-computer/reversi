@@ -1,9 +1,20 @@
 import { computed, ref } from 'vue';
-import { impactKind, LARGE_CAPTURE } from './useMoveImpact';
+import { impactKind, LARGE_CAPTURE, pieceImpactLabels } from './useMoveImpact';
+import { pieceName } from '../../shared/game/pieces';
 import { capturedPieceCount, isPieceMove } from '../../shared/game/piece-events';
+import { isPlacement } from '../../shared/game/engine';
+import { threatAfterMove } from '../../shared/games/gomoku/rules';
 import { opposite, score } from '../../shared/game/state';
 import { REVERSI_CORNERS } from '../../shared/games/reversi/board';
 import { isPieceGame, otherCharacter, type Character, type Color, type GameState, type Reaction } from '../../shared/game/types';
+function captureCelebration(before: GameState, next: GameState, count: number): string | null {
+  const target = next.lastMove === null ? null : before.pieces?.[next.lastMove];
+  if (next.gameType === 'janggi' && target?.kind === 'rook') return '차를 잡았다!';
+  if (next.gameType === 'chess' && target?.kind === 'queen') return '퀸을 잡았다!';
+  if (next.gameType === 'checkers' && count >= 2) return `한 번에 ${count}개나 잡았어!`;
+  return null;
+}
+
 export function useCharacterReaction() {
   const reactions = ref<Record<Color, Reaction>>({ black: 'idle', white: 'idle' });
   const until = ref(0);
@@ -16,23 +27,45 @@ export function useCharacterReaction() {
     reset(!isReversi || impactKind(before, next) !== null);
     const actor = before.turn, rival = opposite(actor);
     event.value = 'move';
+    const visiblePieceMove = isPieceGame(before.gameType) && isPieceMove(before, next)
+      && !(typeof document !== 'undefined' && document.hidden);
     if (next.result) {
       event.value = 'end';
       for (const color of ['black', 'white'] as const) reactions.value[color] = next.result.winner === null ? 'draw' : next.result.winner === color ? 'win' : 'lose';
       until.value = Infinity;
-    } else if (isPieceGame(before.gameType) && isPieceMove(before, next)
-      && !(typeof document !== 'undefined' && document.hidden)) {
-      const captured = capturedPieceCount(before, next) > 0;
-      const checking = impactKind(before, next) !== null;
-      if (captured || checking) {
+    } else if (visiblePieceMove) {
+      const captured = capturedPieceCount(before, next);
+      const impact = impactKind(before, next);
+      if (captured || impact) {
         const character = actor === 'black' ? blackCharacter : otherCharacter(blackCharacter);
         reactions.value[actor] = character === 'jannabi' ? 'sly' : 'whistle';
         reactions.value[rival] = 'annoyed';
         if (captured) {
           event.value = character === 'jannabi' ? 'laugh' : 'whistle';
-          message.value = character === 'jannabi' ? '이 말은 내가 데려갈게! 흐흐흐…' : '한 수 잘 풀렸네, 휘~♪';
+          const celebration = captureCelebration(before, next, captured);
+          if (celebration) {
+            reactions.value[actor] = 'happy';
+            reactions.value[rival] = 'sad';
+          }
+          message.value = celebration ?? (character === 'jannabi' ? '이 말은 내가 데려갈게! 흐흐흐…' : '한 수 잘 풀렸네, 휘~♪');
         }
-        if (checking) message.value = `${next.gameType === 'chess' ? '체크' : '장군'}! 메~롱, 다음 수는 어떨까?`;
+      }
+      const movedPiece = next.pieces?.[next.lastMove!];
+      if (next.gameType === 'chess' && before.pieces?.[next.lastFrom!]?.kind === 'pawn'
+        && movedPiece && movedPiece.kind !== 'pawn') {
+        reactions.value[actor] = 'laugh';
+        event.value = 'laugh';
+        message.value = `${pieceName(movedPiece.kind)} 승격! 하하!`;
+      }
+      if (impact && impact !== 'capture') message.value = `${pieceImpactLabels[impact]}! 메~롱, 다음 수는 어떨까?`;
+    } else if (next.gameType === 'gomoku' && isPlacement(before, next)
+      && !(typeof document !== 'undefined' && document.hidden)) {
+      const threat = threatAfterMove(next);
+      if (threat) {
+        reactions.value[actor] = 'sly';
+        reactions.value[rival] = 'urgent';
+        event.value = 'laugh';
+        message.value = threat === 'threeFour' ? '삼사! 두 방향을 노렸어!' : threat === 'four' ? '이제 한 알만 더 놓으면 돼!' : '열린 3이야. 어디를 막을래?';
       }
     } else if (isReversi) {
       const a = score(before.board), b = score(next.board);
